@@ -106,8 +106,8 @@ jobs:
       - name: Verify crates are publishable
         run: cargo publish --workspace --dry-run --locked
 
-  # Render-smoke for the vendored conformance-table generator. Catches generator/fixture
-  # breakage. Python + pyyaml/jinja2 only — no engines (vLLM/SGLang conformance runs in
+  # Validate the maintained conformance viewer and its source resources.
+  # Python + PyYAML/Selenium — no engines (vLLM/SGLang conformance runs in
   # dynamo's CI lanes; here the engine lanes are on-demand/local).
   conformance-table:
     needs: changes
@@ -138,59 +138,21 @@ jobs:
         id: pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
 
-      # Single stable entry point: render both charts, structural sanity, fixture-
-      # coverage + marker-registration lint (DIS-2442), chart-invariant guards.
+      # Single stable entry point: validate the browser catalog, fixture coverage,
+      # legacy storage, and invariant tests.
       # Add/change conformance gates in check.sh's run_ci(), NOT here — this
       # workflow step should never need another edit for a new gate.
-      - name: Conformance gate (render + lint + invariants)
-        env:
-          PAGES_BASE_URL: ${{ steps.pages.outputs.base_url }}
+      - name: Conformance gate (catalog + lint + invariants)
         run: |
           python3 -m venv /tmp/pvenv
-          /tmp/pvenv/bin/pip install --quiet pyyaml jinja2 pytest
-          render_args=()
-          if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
-            test -n "$PAGES_BASE_URL"
-            render_args=(
-              --github-repository "$GITHUB_REPOSITORY"
-              --github-revision "$GITHUB_SHA"
-              --fixture-base-url "${PAGES_BASE_URL%/}/fixtures/"
-            )
-          fi
-          PATH="/tmp/pvenv/bin:$PATH" conformance/utils/check.sh ci "${render_args[@]}"
-
-      - name: Upload conformance matrix
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: conformity-html
-          path: conformance/utils/CONFORMITY.html
-          retention-days: 14
+          /tmp/pvenv/bin/pip install --quiet pyyaml pytest selenium
+          PATH="/tmp/pvenv/bin:$PATH" conformance/utils/check.sh ci
 
       - name: Prepare GitHub Pages artifact
         if: ${{ github.ref == 'refs/heads/main' }}
         run: |
           set -euo pipefail
-          site="$RUNNER_TEMP/pages"
-          fixtures_root="$(python3 conformance/utils/src/extract_fixtures.py)"
-          mkdir -p "$site"
-          cp conformance/CONFORMANCE_v2.html "$site/index.html"
-          for relative in \
-            toolcalling/fixtures-batch-v1/inputs \
-            toolcalling/fixtures-stream-v1/inputs \
-            reasoning/fixtures-v1/inputs
-          do
-            test -d "$fixtures_root/$relative"
-            mkdir -p "$site/fixtures/$(dirname "$relative")"
-            cp -R "$fixtures_root/$relative" "$site/fixtures/$relative"
-          done
-          if find "$site" -type l -print -quit | grep -q .; then
-            echo "GitHub Pages artifact must not contain symbolic links" >&2
-            exit 1
-          fi
-          if find "$site" -type f -links +1 -print -quit | grep -q .; then
-            echo "GitHub Pages artifact must not contain hard links" >&2
-            exit 1
-          fi
+          python3 conformance/utils/src/publish_viewer.py --output "$RUNNER_TEMP/pages" --revision "$GITHUB_SHA"
 
       - name: Upload GitHub Pages artifact
         if: ${{ github.ref == 'refs/heads/main' }}
@@ -206,7 +168,7 @@ jobs:
           PR_NUMBER="${GITHUB_REF_NAME#pull-request/}"
           gh pr comment "$PR_NUMBER" \
             --edit-last --create-if-none \
-            --body "📊 **Conformance matrix** rendered — [view in CI summary](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+            --body "📊 **Parser conformance viewer** validated — [view in CI summary](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
 
   deploy-pages:
     name: Deploy conformance matrix to GitHub Pages

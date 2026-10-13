@@ -10,11 +10,9 @@
 #     coverage [--family F ...]      fixture-coverage + marker-registration lint vs
 #                                    case-taxonomy.yaml (defaults to --all families)
 #     status [--model F ...] [--tab T ...]
-#                                    render, then fail on every empty/red selected cell
-#     ci [render options]
-#            what the conformance-table CI job runs, and the ONLY thing it runs:
-#            render the conformance chart, structural sanity, coverage lint,
-#            invariant pytest. Render options are forwarded to render_table_v2.sh.
+#                                    read source resources with the shared JS model, then fail on empty/red selected cells
+#     ci     what the conformance-data CI job runs: catalog, coverage, legacy-store,
+#            and invariant checks
 #            Add/change conformance gates in run_ci below — never in .github/workflows.
 #     all    [--container-vllm N --container-sglang M] [--allow-peer-failures]
 #            dynamo(all) + vllm + sglang + coverage. Fails the run on any parser
@@ -24,6 +22,17 @@
 DRY=0; args=()
 while [ $# -gt 0 ]; do case "$1" in --dry-run|--dryrun) DRY=1; shift;; *) args+=("$1"); shift;; esac; done
 set -- ${args+"${args[@]}"}
+# Status is a direct resource reader; sourcing the legacy helpers would extract
+# fixtures before this command even dispatches.
+if [ "${1:-}" = status ]; then
+  status_root="$(cd "$(dirname "$0")/../.." && pwd)"
+  shift
+  if [ "$DRY" = 1 ]; then
+    echo "[dry-run] node $status_root/conformance/viewer/status.js --require-green $*"
+    exit 0
+  fi
+  exec node "$status_root/conformance/viewer/status.js" --root "$status_root" --require-green "$@"
+fi
 source "$(dirname "$0")/src/_common.sh"
 
 usage() { echo "usage: conformance/utils/check.sh <dynamo|vllm|sglang|coverage|status|ci|all> [batch|stream|all] [--container N|--pip]" >&2; exit 2; }
@@ -57,40 +66,20 @@ run_coverage() {  # $@ = passthrough (--family F ...); defaults to --all
   else python3 "$TOOLS/check_family_coverage.py" --all; fi
 }
 
-run_status() {  # $@ = passthrough (--model F ... --tab T ...)
-  local out="$ROOT/conformance/CONFORMANCE_v2.html"
+run_ci() {  # the conformance-data CI gate; fail-fast, also runnable locally
   if [ "$DRY" = 1 ]; then
-    echo "[dry-run] render v2, then validate empty/red status $*"
-    return
-  fi
-  "$UTILS/render_table_v2.sh"
-  python3 "$TOOLS/validate_conformance_status.py" \
-    --html "$out" --require-green "$@"
-}
-
-run_ci() {  # the conformance-table CI gate; fail-fast, also runnable locally
-  if [ "$DRY" = 1 ]; then
-    echo "[dry-run] render v2 $*, sanity greps, coverage lint, invariant pytest"
+    echo "[dry-run] validate viewer catalog, coverage, legacy store, invariant pytest"
     return
   fi
   set -e
-  "$UTILS/render_table_v2.sh" "$@"
-  local out="$ROOT/conformance/CONFORMANCE_v2.html"
-  local status="$ROOT/conformance/CONFORMANCE_v2.json"
-  test -s "$out"
-  test -s "$status"
-  grep -q "TOOLCALLING.batch" "$out"
-  grep -q "REASONING.batch" "$out"
-  echo "conformance matrix rendered: $(wc -c < "$out") bytes"
-  # The uploaded CI artifact name predates the v1/v2 split; keep it stable.
-  \cp -f "$out" "$UTILS/CONFORMITY.html"
+  python3 "$TOOLS/viewer_catalog.py" --check
   run_coverage
   python3 "$TOOLS/validate_legacy_convention.py"
   # The WHOLE tests/ dir, not a hand-maintained file list: the old list named three
   # files, so the resolver-fold, render-invariant and colorize tests never ran in CI
   # and a new test file was gated only by remembering to add it here. The browser
-  # tests skip themselves when Selenium isn't installed (CI installs pyyaml/jinja2/
-  # pytest only), so this stays a no-engine, no-browser gate.
+  # tests exercise the maintained viewer over fixture-owned HTTP servers. CI
+  # installs Selenium so browser contracts run with the shared model tests.
   python3 -m pytest "$UTILS/tests" -q
 }
 
@@ -101,7 +90,6 @@ case "$engine" in
   vllm)   run_engine vllm "$@" ;;
   sglang) run_engine sglang "$@" ;;
   coverage) run_coverage "$@" ;;
-  status) run_status "$@" ;;
   ci)     run_ci "$@" ;;
   all)
     cv=""; cs=""; allow_peer=0; rc=0

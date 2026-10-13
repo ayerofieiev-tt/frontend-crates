@@ -16,7 +16,6 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 import capture_stimulus
-import generate_conformance_table as table
 from unified_tools import unified_tools
 
 
@@ -34,44 +33,17 @@ def _write(base, directory, record, key="UNIFIED.7-2"):
 
 @pytest.mark.parametrize("engine", ["dynamo_v2-0.5.3", "vllm_python-0.25.1", "vllm_rust-0.25.1", "sglang_python-0.5.16"])
 def test_old_fx_capture_is_not_scored_against_new_run_cmd_input(tmp_path, monkeypatch, engine):
-    old_text = '<｜DSML｜ calls><｜DSML｜ invoke name="f"><｜DSML｜ parameter name="x" string="true"> <think>quoted</think> <｜DSML｜ calls> </｜DSML｜ calls> </｜DSML｜ invoke> &amp; "x"\\\n </｜DSML｜ parameter></｜DSML｜ invoke></｜DSML｜ calls>'
-    new_text = '<｜DSML｜ calls><｜DSML｜ invoke name="run"><｜DSML｜ parameter name="cmd" string="true">git log </｜DSML｜ invoke> --oneline</｜DSML｜ parameter></｜DSML｜ invoke></｜DSML｜ calls>'
-    original = _input(old_text)
-    current = _input(new_text) | {"scenario": "arg_marker_in_string"}
-    _write(tmp_path, "inputs", current)
+    original = _input("old captured request")
+    current = _input("new authored request") | {"scenario": "arg_marker_in_string"}
     event = {"kind": "tool_call", "name": "f", "arguments": {"x": "original argument"}}
-    _write(tmp_path, "golden", {"assembled": [event]})
     capture = {"assembled": [event], "chunks": [{"expected": [event]}], "capture_input": capture_stimulus.capture_input(original)}
     path = _write(tmp_path, engine, capture)
     before = path.read_bytes()
-    monkeypatch.setattr(table, "_unified_dynamo_label", lambda: "0.5.3")
-    cases, _caps, _versions = table._load_unified_fixtures(tmp_path)
-    if engine.startswith("dynamo_v2"):
-        record = cases[0]["dynamo_by_ver"]["0.5.3"]
-    else:
-        impl, version = engine.split("-", 1)
-        record = cases[0]["peer_by_ver"][impl][version]
-    assert "stimulus mismatch" in record["unavailable"]
-    assert "input" in record["unavailable"] and "chunks" in record["unavailable"]
+    reason = capture_stimulus.comparison_failure(capture, current, before, path.name, {})
+    assert "stimulus mismatch" in reason
+    assert "input" in reason and "chunks" in reason
     assert path.read_bytes() == before
-    monkeypatch.setattr(table, "_unified_base", lambda root: tmp_path)
-    monkeypatch.setattr(table.gen_unified_golden, "CLEAN", [case for case in table.gen_unified_golden.CLEAN if case[0] == "arg_marker_in_string"])
-    monkeypatch.setattr(table.gen_unified_golden, "EDGE", [case for case in table.gen_unified_golden.EDGE if case[0] == "arg_marker_in_string"])
-    model = table._unified_tab_model(tmp_path, {})
-    row = next(row for row in model["rows"] if row["family"] == "deepseek_v41")
-    cell = row["cells"]["arg_marker_in_string"]
-    candidate = {"dynamo_v2": "dynamo", "vllm_python": "vllm", "vllm_rust": "vllm_rust", "sglang_python": "sglang_python@" + engine.split("-", 1)[1]}[engine.split("-", 1)[0]]
-    popups = {item["key"]: item["block"] for item in cell["tooltip"]["candidates"]}
-    popup = popups[candidate]
-    assert "stimulus mismatch" in popup["unavailable"]
-    assert "verdict" not in popup and "events" not in popup
-    assert all(chunk["expected"][candidate] == [] for chunk in cell["tooltip"]["input"]["chunks"])
-    _write(tmp_path, "inputs", original | {"scenario": "arg_marker_in_string"})
-    cases, _caps, _versions = table._load_unified_fixtures(tmp_path)
-    record = (cases[0]["dynamo_by_ver"]["0.5.3"] if engine.startswith("dynamo_v2")
-              else cases[0]["peer_by_ver"][impl][version])
-    assert "unavailable" not in record
-    assert table._unified_classify("deepseek_v41", [event], record["assembled"]) == "MATCH"
+    assert capture_stimulus.comparison_failure(capture, original, before, path.name, {}) is None
 
 
 @pytest.mark.parametrize("dimension", ["input", "init", "chunks", "finish_reason", "tools"])

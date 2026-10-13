@@ -1,17 +1,17 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
-// Conformance matrix behavior (audit B7). Inlined at render by generate_conformance_table.py.
-(function () {
+// Maintained conformance matrix controller for asynchronously loaded tab models.
+window.initializeConformanceController = function (hooks = {}) {
   // Gutter kept between a popup and the viewport edge (2em at the 16px root size).
   // The tooltip is width:max-content and the widest ones run to the full cap below, so
   // without this they sit flush against the screen edge and read as clipped.
   const margin = 32;
   const showDelayMs = 750;
   const hideDelayMs = 750;
-  const columnButtons = Array.from(document.querySelectorAll('[data-col-toggle]'));
-  const columnKeys = Array.from(new Set(columnButtons.map(function (button) {
+  let columnButtons = Array.from(document.querySelectorAll('[data-col-toggle]'));
+  let columnKeys = Array.from(new Set([...(hooks.columnKeys || []), ...columnButtons.map(function (button) {
     return button.dataset.colToggle;
-  })));
+  })]));
   const viewCheckboxes = Array.from(document.querySelectorAll('[data-view-detailed]'));
 
   // Compare-any-combination model (TC v1 batch tab): pick one Base and any number
@@ -178,7 +178,6 @@
     // Dynamo v2 parser), ni holds {label, families}. A cell whose family is not in
     // that list is "not implemented" — a different reason than case-level "not
     // applicable", and it wins.
-    const ni = base ? PARSER_NI[base] : null;
     // Cells carry data-cmp (compare payload) and, on the v2 page, data-family (for the
     // reference-aware "not implemented" note). The v1 parity page has data-cmp only, so
     // match either — otherwise v1 cells never get colored.
@@ -192,84 +191,12 @@
       cell.classList.remove('cmp-eq', 'cmp-leak', 'cmp-na', 'cmp-nobase', 'cmp-donly');
       const marker = cell.querySelector('.cmp-marker .marker-text');
       const fam = cell.getAttribute('data-family') || '';
-      if (base && ni && ni.families.indexOf(fam) === -1) {
-        cell.classList.add('cmp-na'); if (marker) { marker.textContent = 'x'; }
-        setWhy(cell, ni.label + ' is not yet implemented for family “' + fam + '”');
-        if (countThis) { counts.na++; } toggleCands(cell, active, base); return;
-      }
-      setWhy(cell, '');
-      const bd = base ? cmp[base] : null;
-      if (!base) {
-        cell.classList.add('cmp-nobase'); if (marker) { marker.textContent = ''; }
-        if (countThis) { counts.na++; } toggleCands(cell, active, base); return;
-      }
-      if (!bd || bd.na === 1) {
-        cell.classList.add('cmp-na'); if (marker) { marker.textContent = 'n/a'; }
-        if (countThis) { counts.na++; } toggleCands(cell, active, base); return;
-      }
-      // Unavailable candidates (na) and candidates that ran-and-threw (err) never count
-      // toward the diff against a clean Reference; both are still shown in the tooltip.
-      const avail = shown.map(function (k) { return cmp[k]; })
-        .filter(function (o) { return o && o.na !== 1 && o.err !== 1; });
-      // ...but they must not be SILENT either. A compare candidate that has no data for
-      // this case (an older capture taken before the case existed) is not agreement, and
-      // folding it into "=" claims the two builds produced the same output when one of
-      // them never ran it. Counted separately so the glyph can say "no data" instead.
-      const naShown = shown.filter(function (k) {
-        return k !== base && cmp[k] && cmp[k].na === 1;
-      }).length;
-      // NΔ counts shown COMPARE engines that diverge from GOLDEN (the fixed reference),
-      // independent of which engine is starred. When there is no golden (other tabs), fall
-      // back to the selected reference. `avail` excludes the base (the starred REF).
-      const goldenSig = cmp.golden ? cmp.golden.sig : null;
-      const refSig = (goldenSig != null ? goldenSig : bd.sig);
-      // The Reference parser itself RAN and THREW (err=1). A selected Compare that PARSED
-      // (a real, non-error output) is a genuine disagreement with the failed Reference ->
-      // red (a delta), not grey n/a. If nothing parsed to disagree with (no Compares, or
-      // every Compare also threw / is unavailable), there is no delta -> neutral grey.
-      // Oracle-backed cells fail on a Reference error even with no Compare selected.
-      const redOnDiff = cell.getAttribute('data-red-on-diff') === '1';
-      if (bd.err === 1) {
-        if (redOnDiff) {
-          cell.classList.add('cmp-leak'); if (marker) { marker.textContent = '✗'; }
-          if (countThis) { counts.problem++; }
-        } else if (avail.length > 0) {
-          cell.classList.add('cmp-leak'); if (marker) { marker.textContent = String(avail.length) + 'Δ'; }
-          if (countThis) { counts.problem++; }
-        } else {
-          cell.classList.add('cmp-na'); if (marker) { marker.textContent = 'n/a'; }
-          if (countThis) { counts.na++; }
-        }
-        toggleCands(cell, active, base); return;
-      }
-      const diffs = avail.filter(function (o) { return o.sig !== refSig; }).length;
-      const leak = bd.leak === 1;
-      // Unified tab (data-red-on-diff): GOLDEN is the fixed oracle, and the cell color
-      // reflects ONLY the REF — the starred engine (`base`, default Dynamo) — measured
-      // against golden. A red cell means the REF's own output diverges from golden. The
-      // Compare-with engines still surface their divergence count as NΔ, but never color
-      // the cell (a compare diverging is the compare's business, not the REF's). golden as
-      // REF never diverges from itself, so star an engine to evaluate it.
-      const refDiverges = redOnDiff && base !== 'golden' && goldenSig != null
-        && bd && bd.na !== 1 && bd.sig !== goldenSig;
-      const donly = avail.length === 0;
-      const leaked = leak;  // the REF's own leak drives ↯, same as every other tab
-      // Marker: ✗ when the REF diverges (the red signal); otherwise NΔ = how many Compare
-      // engines diverge from golden (informational, stays green), "=" when all agree.
-      // "=" is only honest when every shown candidate actually produced output. When a
-      // selected compare candidate has no capture for this case, say so ("?") rather
-      // than reporting agreement it cannot support. A real divergence still wins.
-      const eqTxt = naShown > 0 ? '?' : '=';
-      let txt;
-      if (redOnDiff) {
-        txt = refDiverges ? '✗' : (diffs > 0 ? String(diffs) + 'Δ' : eqTxt);
-      } else {
-        txt = donly ? '' : (diffs === 0 ? eqTxt : String(diffs) + 'Δ');
-      }
-      if (marker) { marker.textContent = (leaked ? '↯' : '') + txt; }
-      const problem = redOnDiff ? refDiverges : leaked;
-      cell.classList.add(problem ? 'cmp-leak' : 'cmp-eq');
-      if (countThis) { if (problem) { counts.problem++; } else { counts.ok++; } }
+      const outcome = hooks.cellOutcome({ cmp, base, shown, family: fam,
+        parserNi: PARSER_NI, redOnDiff: cell.getAttribute('data-red-on-diff') === '1' });
+      cell.classList.add(outcome.className);
+      if (marker) marker.textContent = outcome.marker;
+      setWhy(cell, outcome.why);
+      if (countThis) counts[outcome.category]++;
       toggleCands(cell, active, base);
     });
     panel.querySelectorAll('[data-overview-count]').forEach(function (el) {
@@ -363,7 +290,7 @@
             r.checked = false;
             handleRefUncheck(ctl);
             const panel = ctl.closest('.tab-panel');
-            if (panel) { applyCtl(panel); }
+            if (panel) { applyCtl(panel); hooks.selectionChanged?.(panel); }
           }, 0);
         });
       });
@@ -371,7 +298,7 @@
         if (e.target.matches('input.cmp-ref')) { handleRefChange(ctl); }
         if (e.target.matches('input.cmp-ref, input.cmp-on')) {
           const panel = ctl.closest('.tab-panel');
-          if (panel) { applyCtl(panel); }
+          if (panel) { applyCtl(panel); hooks.selectionChanged?.(panel); }
         }
       });
     });
@@ -425,6 +352,7 @@
           cb.checked = false;
         });
         applyCtl(panel);
+        if (shouldUpdateUrl && panel.classList.contains('active')) hooks.selectionChanged?.(panel);
       });
     }
     if (shouldUpdateUrl) {
@@ -449,11 +377,11 @@
   });
 
   function defaultVisibleColumns() {
-    const visible = new Set();
+    const visible = new Set(hooks.columnKeys || []);
     columnButtons.forEach(function (button) {
       if (button.dataset.defaultVisible === 'true') {
         visible.add(button.dataset.colToggle);
-      }
+      } else visible.delete(button.dataset.colToggle);
     });
     return visible;
   }
@@ -606,17 +534,13 @@
   if (new URLSearchParams(window.location.search).has('cols')) {
     updateUrl(visibleColumns);
   }
-  columnButtons.forEach(function (button) {
-    button.addEventListener('click', function () {
-      const key = button.dataset.colToggle;
-      visibleColumns = new Set(visibleColumns);
-      if (visibleColumns.has(key)) {
-        visibleColumns.delete(key);
-      } else {
-        visibleColumns.add(key);
-      }
-      applyColumnState(visibleColumns, true);
-    });
+  document.addEventListener('click', function (event) {
+    const button = event.target.closest('[data-col-toggle]');
+    if (!button) return;
+    const key = button.dataset.colToggle;
+    visibleColumns = new Set(visibleColumns);
+    if (visibleColumns.has(key)) visibleColumns.delete(key); else visibleColumns.add(key);
+    applyColumnState(visibleColumns, true);
   });
 
   const tabButtons = Array.from(document.querySelectorAll('.tab-button'));
@@ -860,14 +784,19 @@
   // ended up pinnable but not counted as inside — a header click pinned it and the SAME
   // click bubbled here and unpinned it, so the popup could never stay up.
   const WIRED = '[data-ttip-wired]';
+  const pinsAtClickStart = new WeakMap();
+  // A cached Retry may restore a different owner before this click bubbles.
+  // Only the pin present at event entry belongs to the outside-click gesture.
+  document.addEventListener('click', event => { pinsAtClickStart.set(event, pinnedCell); }, true);
   document.addEventListener('click', function (e) {
     // A click anywhere outside a pinnable element (and not on a pinned tooltip) closes the pin.
-    if (pinnedCell && !e.target.closest(WIRED) && !e.target.closest('.ttip')) { unpinCell(pinnedCell); }
+    if (pinnedCell && pinnedCell === pinsAtClickStart.get(e) && !e.target.closest(WIRED) && !e.target.closest('.ttip')) { unpinCell(pinnedCell); }
   });
 
   function attachTooltip(cell) {
     const ttip = cell.querySelector('.ttip');
     if (!ttip) return;
+    if (!cell.dataset.popupKey && cell.dataset.colToggle) cell.dataset.popupKey = `control:${cell.dataset.colToggle}`;
     cell._ttip = ttip;
     ttip._ttipOwner = cell;
     // cloneNode copies the wired flag; guard so re-wiring a clone is a no-op and
@@ -942,6 +871,8 @@
       }
     }
     cell._ttipUnpin = unpin;
+    cell._ttipPin = pin;
+    cell._ttipDispose = function () { clearTimers(); unpin(); };
 
     function clearTimers() {
       if (showTimer !== null) {
@@ -1104,6 +1035,7 @@
   tabButtons.forEach(function (button) {
     button.addEventListener('click', function () {
       activateTab(button.dataset.tabTarget, true);
+      hooks.tabChanged?.(button.dataset.tabTarget);
     });
   });
 
@@ -1127,6 +1059,15 @@
       url.searchParams.set('transpose', '1');
     }
     window.history.replaceState(null, '', url.toString());
+  }
+
+  function cloneTooltip(source) {
+    if (!source) return null;
+    const clone = source.cloneNode(true);
+    clone.classList.remove('ttip-visible', 'ttip-pinned');
+    clone.removeAttribute('data-ttip-wired');
+    clone.querySelectorAll('.ttip-close').forEach(button => { button.removeAttribute('data-ttip-close-wired'); });
+    return clone;
   }
 
   function buildTransposed(table) {
@@ -1158,6 +1099,7 @@
       if (!modelTd) return;
       models.push({
         name: modelTd.textContent.trim(),
+        popupKey: modelTd.dataset.popupKey,
         section: curSection,
         parserTd: row.querySelector('td.parser'),
         cells: Array.from(row.querySelectorAll('td.cell'))
@@ -1228,6 +1170,7 @@
     models.forEach(function (m) {
       const th = document.createElement('th');
       th.className = 'tcol-model';
+      th.dataset.popupKey = m.popupKey;
       const label = document.createElement('span');
       label.className = 'tcol-model-label';
       const nameSpan = document.createElement('span');
@@ -1257,9 +1200,7 @@
       // Same hover tooltip as the original parser cell.
       const srcTip = m.parserTd && (m.parserTd._ttip || m.parserTd.querySelector('.ttip'));
       if (srcTip) {
-        const tipClone = srcTip.cloneNode(true);
-        tipClone.removeAttribute('data-ttip-wired');
-        delete tipClone.dataset.ttipWired;
+        const tipClone = cloneTooltip(srcTip);
         th.appendChild(tipClone);
         attachTooltip(th);
       }
@@ -1288,6 +1229,7 @@
       if (group) { tr.setAttribute('data-col-hide-group', group); }
       const caseTh = document.createElement('th');
       caseTh.className = 'trow-case';
+      caseTh.dataset.popupKey = subTh.dataset.popupKey;
       const link = subTh.querySelector('a');
       caseTh.appendChild(link ? link.cloneNode(true) : document.createTextNode(subTh.textContent.trim()));
       // Carry the per-case grammar popup into the transposed view. Transposing turns the
@@ -1309,15 +1251,10 @@
         if (src) {
           const sourceTip = src._ttip || src.querySelector('.ttip');
           const clone = src.cloneNode(true);
-          const cloneTip = sourceTip && sourceTip.cloneNode(true);
+          const cloneTip = cloneTooltip(sourceTip);
           const embeddedTip = clone.querySelector('.ttip');
           if (cloneTip) {
             if (embeddedTip) embeddedTip.remove();
-            cloneTip.classList.remove('ttip-visible', 'ttip-pinned');
-            cloneTip.querySelectorAll('.ttip-close').forEach(function (button) {
-              button.removeAttribute('data-ttip-close-wired');
-              delete button.dataset.ttipCloseWired;
-            });
             clone.appendChild(cloneTip);
           }
           clone.classList.remove('col-hidden');
@@ -1378,4 +1315,39 @@
       applyTransposeMode(transposeToggle.checked, true);
     });
   }
-})();
+  function disposePanel(panel) {
+    const selected = pinnedCell?.closest('.tab-panel') === panel ? {
+      popupKey: pinnedCell.dataset.popupKey,
+      transposed: Boolean(pinnedCell.closest('[data-transpose-table]')),
+      width: pinnedCell._ttip.style.width, height: pinnedCell._ttip.style.height,
+    } : null;
+    panel.querySelectorAll('[data-ttip-wired]').forEach(cell => cell._ttipDispose?.());
+    return selected;
+  }
+  function refreshPanel(panel) { applyCtl(panel); }
+  function updatePanel(panel, pin) {
+    columnButtons = Array.from(document.querySelectorAll('[data-col-toggle]'));
+    columnKeys = [...new Set([...(hooks.columnKeys || []), ...columnButtons.map(button => button.dataset.colToggle)])];
+    visibleColumns = readVisibleColumns();
+    panel.querySelectorAll(WIRE_ON_LOAD).forEach(attachTooltip);
+    applyColumnState(visibleColumns, false);
+    if (document.body.classList.contains('transpose-mode')) ensureTransposed(panel);
+    applyCtl(panel);
+    if (pin?.popupKey) {
+      const table = panel.querySelector(pin.transposed ? '[data-transpose-table]' : '[data-parity-table]');
+      const cell = [...(table?.querySelectorAll('[data-popup-key]') || [])].find(cell => cell.dataset.popupKey === pin.popupKey);
+      if (cell) {
+        window.__buildTooltip(cell);
+        cell._ttip.style.width = pin.width; cell._ttip.style.height = pin.height;
+        cell._ttipPin?.();
+      }
+    }
+    updateStickyOffsets();
+  }
+  return { refreshPanel, updatePanel, disposePanel, activePanel,
+    selection(panel) {
+      const ctl = panelCtl(panel), reference = ctlBase(ctl);
+      return { reference, selected: reference ? [reference, ...ctlShown(ctl).filter(key => key !== reference)] : [] };
+    },
+  };
+};

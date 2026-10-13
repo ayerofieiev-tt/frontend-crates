@@ -17,7 +17,79 @@ if str(SRC) not in sys.path:
 
 import capture_stimulus
 import generate_conformance_table as table
+import markers
+from tables.reasoning import table as reasoning_table
 from unified_tools import unified_tools
+
+
+@pytest.mark.parametrize("payload", [
+    {"code": "source_unavailable", "detail": "source detail", "message": "older message"},
+    {"code": "source_unavailable", "message": "older message"},
+    {"code": "source_unavailable"},
+])
+def test_typed_unavailable_uses_one_text_projection_across_readers(payload):
+    """Failure metadata cannot be expressed by a model-text corpus scenario."""
+    expected = payload.get("detail", payload.get("message", payload["code"]))
+    record = {"unavailable": payload}
+    original = copy.deepcopy(record)
+    normalized = capture_stimulus.normalize_unavailable(record)
+    assert normalized["unavailable"] == expected
+    assert normalized["capture_observation"] == {"unavailable": payload}
+    assert capture_stimulus.normalize_unavailable(normalized) == normalized
+    for reader in (table._unified_capture_failure, table._output_block_model, reasoning_table._reasoning_output_model):
+        assert reader(record) == {"unavailable": expected, "unavailable_code": payload["code"]}
+    assert record == original
+
+
+@pytest.mark.parametrize("code, category", [
+    ("peer_request_unsupported", "unsupported_request_mode"),
+    ("peer_finish_unsupported", "unsupported_request_mode"),
+    ("peer_termination_unsupported", "unsupported_request_mode"),
+    ("peer_chunk_schedule_unsupported", "unsupported_request_mode"),
+    ("vllm_chunk_schedule_unsupported", "unsupported_request_mode"),
+    ("vllm_tool_schema_unsupported", "unsupported_request_mode"),
+    ("vllm_rust_guided_json_unsupported", "unsupported_request_mode"),
+    ("vllm_rust_named_tool_unsupported", "unsupported_request_mode"),
+    ("vllm_rust_starting_state_unsupported", "unsupported_request_mode"),
+    ("peer_detector_unavailable", "unsupported_family"),
+    ("vllm_parser_not_registered", "unsupported_family"),
+    ("vllm_rust_parser_not_registered", "unsupported_family"),
+    ("future_family_unsupported", "future_family_unsupported"),
+    ("source_unavailable", "source_unavailable"),
+])
+@pytest.mark.parametrize("sidecar", ["capture_observation", "capture_stimulus"])
+def test_unavailable_category_keeps_the_original_code_in_its_sidecar(code, category, sidecar):
+    record = {"unavailable": "verbatim reason", sidecar: {"unavailable": {"code": code}}}
+    original = copy.deepcopy(record)
+    normalized = capture_stimulus.normalize_unavailable(record)
+    assert normalized["unavailable"] == "verbatim reason"
+    assert normalized["unavailable_code"] == category
+    assert normalized[sidecar] == original[sidecar]
+    assert record == original
+
+
+@pytest.mark.parametrize("error, kind", [({"message": "parser threw"}, "parser_error"), ("expected rejection", "expected_error")])
+def test_unavailable_projection_preserves_error_shape_and_classification(error, kind):
+    record = {"error": error}
+    assert capture_stimulus.normalize_unavailable(record) == record
+    for reader in (table._output_block_model, reasoning_table._reasoning_output_model):
+        projected = reader(record)
+        assert projected["error"] == error
+        assert markers._error_kind(projected) == kind
+
+
+@pytest.mark.parametrize("sidecar", ["capture_observation", "capture_stimulus"])
+@pytest.mark.parametrize("raw", [{"message": "request cannot run"}, {"code": "legacy_unclassified", "detail": "old reason"}])
+def test_typed_sidecar_remains_authoritative_for_structured_unavailable(sidecar, raw):
+    payload = {"code": "peer_request_unsupported", "detail": {"message": "request cannot run"}}
+    record = {"unavailable": raw, sidecar: {"unavailable": payload}, "unavailable_code": "legacy_unclassified"}
+    original = copy.deepcopy(record)
+    projected = capture_stimulus.normalize_unavailable(record)
+    assert projected[sidecar] == original[sidecar]
+    assert projected["unavailable"] == "peer_request_unsupported"
+    assert projected["unavailable_code"] == "unsupported_request_mode"
+    assert capture_stimulus.normalize_unavailable(projected) == projected
+    assert record == original
 
 
 def _input(text):

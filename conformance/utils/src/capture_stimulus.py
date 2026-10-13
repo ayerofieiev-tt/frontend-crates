@@ -10,6 +10,47 @@ from pathlib import Path
 import yaml
 
 from fixture_disposition import canonical_unified_record_key, canonicalize_unified_inputs
+from impls import UNIFIED_BATCH_IMPLS
+
+
+_UNAVAILABLE_CATEGORIES = {
+    **dict.fromkeys(("peer_request_unsupported", "peer_finish_unsupported", "peer_termination_unsupported",
+                     "peer_chunk_schedule_unsupported", "vllm_chunk_schedule_unsupported", "vllm_tool_schema_unsupported",
+                     "vllm_rust_guided_json_unsupported", "vllm_rust_named_tool_unsupported", "vllm_rust_starting_state_unsupported"),
+                    "unsupported_request_mode"),
+    **dict.fromkeys(("peer_detector_unavailable", "vllm_parser_not_registered", "vllm_rust_parser_not_registered"),
+                    "unsupported_family"),
+}
+
+
+def capture_failure_detail(payload: dict) -> object:
+    return payload.get("detail", payload.get("message", payload.get("code")))
+
+
+def capture_failure_text(payload: dict) -> str:
+    detail = capture_failure_detail(payload)
+    text = detail if isinstance(detail, str) else payload.get("code")
+    if not isinstance(text, str):
+        raise ValueError("capture failure needs string detail, message, or code")
+    return text
+
+
+def normalize_unavailable(record: dict) -> dict:
+    """Project typed limitations without changing stored observations or error kinds."""
+    if "unavailable" not in record:
+        return record
+    result = dict(record)
+    typed = ((record.get("capture_observation") or {}).get("unavailable")
+             or (record.get("capture_stimulus") or {}).get("unavailable") or {})
+    if isinstance(record["unavailable"], dict):
+        if not typed:
+            typed = record["unavailable"]
+            result["capture_observation"] = {**(record.get("capture_observation") or {}), "unavailable": dict(typed)}
+        result["unavailable"] = capture_failure_text(typed)
+    code = typed.get("code") or record.get("unavailable_code")
+    if code is not None:
+        result["unavailable_code"] = _UNAVAILABLE_CATEGORIES.get(code, code)
+    return result
 
 
 def validate_family_scoped_cases(cases: list[dict]) -> None:
@@ -169,7 +210,8 @@ def select_peer_observation(record: dict, current: dict, *, implementation: str,
     recapture = record.get("verified_recapture")
     if recapture is None:
         return record
-    if implementation not in {"sglang_python", "vllm_python", "vllm_rust"}:
+    batch = implementation in UNIFIED_BATCH_IMPLS
+    if implementation not in {"sglang_python", "vllm_python", "vllm_rust"} and not batch:
         raise ValueError("verified recapture requires a supported peer implementation")
     if not isinstance(recapture, dict) or set(recapture) != {"result", "provenance", "resolution"}:
         raise ValueError("invalid verified recapture")
@@ -194,9 +236,13 @@ def select_peer_observation(record: dict, current: dict, *, implementation: str,
     result = recapture["result"]
     if not isinstance(result, dict) or result.get("capture_input") != capture_input(current):
         raise ValueError("verified recapture request differs from displayed request")
-    states = sum(key in result for key in ("error", "unavailable", "chunks"))
+    states = sum(key in result for key in ("error", "unavailable", "assembled" if batch else "chunks"))
     if states != 1:
         raise ValueError("verified recapture must carry exactly one result state")
+    if batch:
+        if "chunks" in result or ("assembled" in result and result["assembled"] != batch_final_events(result.get("batch_final", {}))):
+            raise ValueError("invalid verified batch final fields")
+        result = {**result, "producer_origin": {"crate_version": version, **provenance}}
     if resolution == "historical_adapter_unsupported" and "unavailable" in result:
         return {**result, "historical_capture_note": (
             "This comparison uses the recapture adapter's verified request compatibility "
@@ -305,3 +351,21 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def batch_final_events(final: dict) -> list[dict]:
+    """Project final message fields without inventing their lost interleaving."""
+    if set(final) != {"reasoning_text", "normal_text", "calls"}:
+        raise ValueError("batch final fields must contain reasoning_text, normal_text, calls")
+    if not isinstance(final["reasoning_text"], str) or not isinstance(final["normal_text"], str) or not isinstance(final["calls"], list):
+        raise ValueError("invalid batch final field types")
+    events = []
+    if final["reasoning_text"]:
+        events.append({"kind": "reasoning", "text": final["reasoning_text"]})
+    if final["normal_text"]:
+        events.append({"kind": "text", "text": final["normal_text"]})
+    for call in final["calls"]:
+        if set(call) != {"name", "arguments"} or not isinstance(call["name"], str):
+            raise ValueError("invalid batch tool call")
+        events.append({"kind": "tool_call", **call})
+    return events

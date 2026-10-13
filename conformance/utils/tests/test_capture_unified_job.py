@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import json
 import sys
 from pathlib import Path
 
@@ -14,6 +15,15 @@ import capture_unified_job
 
 
 ROOT = Path(__file__).resolve().parents[2] / "fixtures-unified-v2" / "families"
+
+
+def test_batch_cli_emits_bound_requests_and_golden(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["capture_unified_job.py", "--family", "gemma4", "--mode", "batch"])
+    capture_unified_job.main()
+    job = json.loads(capsys.readouterr().out)
+    assert job == capture_unified_job.build_job(ROOT, "gemma4", mode="batch")
+    assert all({"request", "golden", "case_id"} <= case.keys() for case in job["cases"])
+    assert any(case["request"]["init"]["starting_state"] == "Reasoning" for case in job["cases"])
 
 
 def test_existing_family_job_is_stable_and_preserves_request_shape():

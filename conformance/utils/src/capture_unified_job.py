@@ -61,7 +61,7 @@ def _case_job(family: str, case: dict) -> dict:
     }
 
 
-def build_job(input_root: Path, family: str) -> dict:
+def build_job(input_root: Path, family: str, *, mode: str = "unified") -> dict:
     path = _family_path(input_root, family)
     document = yaml.safe_load(path.read_text())
     if not isinstance(document, dict):
@@ -81,6 +81,11 @@ def build_job(input_root: Path, family: str) -> dict:
         for case in cases.values()
         if case.get("lifecycle", "active") != "retired"
     ]
+    if mode not in {"unified", "batch"}:
+        raise ValueError(f"unknown capture mode: {mode}")
+    if mode == "batch":
+        for job, (case_id, case) in zip(jobs, ((key, case) for key, case in cases.items() if case.get("lifecycle", "active") != "retired"), strict=True):
+            job.update({"case_id": case_id, "request": case["request"], "golden": case["golden"]})
     validate_family_scoped_cases(jobs)
     return {"family": family, "cases": jobs}
 
@@ -96,8 +101,9 @@ def main() -> None:
         default=Path(__file__).resolve().parents[2] / "fixtures-unified-v2" / "families",
     )
     parser.add_argument("--output", type=Path, help="write JSON here instead of stdout")
+    parser.add_argument("--mode", choices=("unified", "batch"), default="unified")
     args = parser.parse_args()
-    payload = json.dumps(build_job(args.input_root, args.family), indent=2, ensure_ascii=False)
+    payload = json.dumps(build_job(args.input_root, args.family, mode=args.mode), indent=2, ensure_ascii=False)
     if args.output:
         args.output.write_text(payload + "\n")
     else:

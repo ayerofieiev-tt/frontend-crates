@@ -156,7 +156,7 @@
   // survives cloneNode), NOT a JS property (which does not) — so transpose clones
   // (built by conformance.js via cloneNode) can still build their tooltip. One
   // DELEGATED document listener handles every cell (originals + clones) instead of
-  // thousands of per-cell listeners.
+  // thousands of per-cell listeners; click-only hosts build only after a click.
   var _ttipModels = {};
   var _ttipSeq = 0;
   // Whether this page carries a reference-aware not-implemented map (v2 only); gates
@@ -166,8 +166,11 @@
   // supplies its own HTML so the legacy v1 page keeps its "match Base" wording.
   var _summaryLegendHtml = null;
 
-  function registerTooltip(td, model) {
-    var id = String(++_ttipSeq);
+  const tooltipIds = new WeakMap();
+  function registerTooltip(td, model, fixtureHref) {
+    if (fixtureHref) td.dataset.ttipFixture = fixtureHref;
+    const id = tooltipIds.get(model) || String(++_ttipSeq);
+    tooltipIds.set(model, id);
     td.setAttribute('data-ttip-id', id);
     _ttipModels[id] = model;
   }
@@ -183,7 +186,7 @@
     if (!m) { return; }
     // Append (don't overwrite): conformance.js may already have inserted its
     // `.ttip-close` button / `.cmp-why` line into the empty `.ttip`; keep them.
-    ttip.insertAdjacentHTML('beforeend', buildTooltipHtml(m));
+    ttip.insertAdjacentHTML('beforeend', renderTooltip(m, td.dataset.ttipFixture));
     // The freshly-built `.cand` sections + chart columns start hidden — CSS shows
     // them only with `.cand-on`/visible-column, which conformance.js's toggleCands
     // adds during applyCtl. Nudge applyCtl so the current selection is reflected.
@@ -191,14 +194,18 @@
   }
   // Expose so conformance.js (or tests) can force-build a specific cell if needed.
   window.__buildTooltip = buildTooltipInto;
+  window.__registerConformanceTooltip = registerTooltip;
+  window.__conformanceCaseTooltip = columnGrammarModel;
 
   function delegatedBuild(e) {
     var t = e.target;
     // Anything carrying a `data-ttip-id` builds the same lazy way a data cell does —
     // headers included, which is why this asks for the attribute rather than listing the
-    // element types that happen to have one today. A list here had already missed
-    // `th.tcol-model`, so hovering a transposed model header showed an empty box.
+    // element types that happen to have one today. Click-only matrix cells either open the
+    // output drawer or pin their tooltip, so pointer and focus must not build them.
     var td = t && t.closest ? t.closest('[data-ttip-id]') : null;
+    if (td && (td.dataset.ttipClick === 'drawer'
+      || (td.dataset.ttipClick === 'pin' && e.type !== 'click'))) { return; }
     if (td) { buildTooltipInto(td); }
   }
   // pointerover/focusin/click all bubble, so one document listener covers every
@@ -213,6 +220,10 @@
   function refreshCompare(td) {
     var panel = td.closest ? td.closest('.tab-panel') : null;
     if (!panel) { return; }
+    if (panel._comparisonSelection) {
+      window.__syncConformanceTooltip(td, panel._comparisonSelection.keys, panel._comparisonSelection.reference, panel.id === 'tab-unified');
+      return;
+    }
     var ctl = panel.querySelector('.cmpctl');
     if (!ctl) { return; }
     var box = ctl.querySelector('input.cmp-on');
@@ -230,23 +241,36 @@
   // --- Output block rendering (mirrors _format_output_block_html) ------------
   function outputBlock(b, family, ctx, goldenKinds) {
     if (!b) { return '—'; }
+    const producerNote = b.producer_origin
+      ? '\n<span class="expl">Producer: ' + escapeHtml(JSON.stringify(b.producer_origin)) + '</span>'
+        + (b.inherited_from ? '\n<span class="expl">Inherited observation from ' + escapeHtml(b.inherited_from) + '</span>' : '')
+      : '';
     if (b.unavailable != null) {
       // Prose, not payload: these carry n/a rationale and TODO notes.
-      var unavailable = b.unavailable;
-      var reason = (unavailable && typeof unavailable === 'object')
+      const unavailable = b.unavailable;
+      const reason = (unavailable && typeof unavailable === 'object')
         ? (typeof unavailable.detail === 'string' ? unavailable.detail
           : (typeof unavailable.code === 'string' ? unavailable.code : JSON.stringify(unavailable)))
         : String(unavailable);
-      return '<span class="expl">unavailable: ' + escapeHtml(reason) + '</span>';
+      return '<span class="expl">unavailable: ' + escapeHtml(reason) + '</span>' + producerNote;
     }
     if (b.exception != null) {
       // The parser ran and threw; surface the exception verbatim (e.g. the named
       // vLLM Rust crate variant `ToolParserError::ParsingFailed (...)`).
-      return 'exception: ' + escapeHtml(String(b.exception));
+      return 'exception: ' + escapeHtml(String(b.exception)) + producerNote;
     }
     if (b.error != null) {
       var e = (typeof b.error === 'string') ? b.error : JSON.stringify(b.error);
-      return 'error: ' + escapeHtml(e);
+      return 'error: ' + escapeHtml(e) + producerNote;
+    }
+    if (b.batch_final != null) {
+      const fields = b.batch_final;
+      return '<span class="fldl">reasoning_text=</span>' + colorize(fields.reasoning_text, family, ctx)
+        + '\n<span class="fldl">normal_text=</span>' + colorize(fields.normal_text, family, ctx)
+        + '\n<span class="fldl">calls=</span>' + colorizeWords(JSON.stringify(fields.calls), ctx)
+        + '\n\n<span class="expl">Batch final fields; streaming order/chunk timing unavailable. Final assembly is compared to ordered GOLDEN; lost interleaving is a mismatch.</span>'
+        + (b.verdict && b.verdict !== 'MATCH' ? '\n<span class="expl">diverges: ' + escapeHtml(b.verdict) + '</span>' : '')
+        + producerNote;
     }
     // Unified tab: an ordered event stream (reasoning | text | tool_call).
     if (b.events != null) {
@@ -430,10 +454,13 @@
         }
         row += '</td>';
         cands.forEach(function (c, ci) {
-          var impl = implKeyOf(c.key);
-          var d = (ch.expected && ch.expected[impl]) || [];
+          const expected = ch.expected || {};
+          const deltas = Object.prototype.hasOwnProperty.call(expected, c.key) ? expected[c.key] : expected[implKeyOf(c.key)];
+          const output = c.parse_mode === 'batch'
+            ? '<span class="parser-base">Batch: streaming order/chunk timing unavailable</span>'
+            : renderDeltas(deltas || [], ctx);
           row += '<td data-cand="' + escapeAttr(c.key) + '" data-cand-order="' + ci + '">'
-            + renderDeltas(d, ctx) + '</td>';
+            + output + '</td>';
         });
         body += row + '</tr>';
       });
@@ -458,7 +485,8 @@
     var inputHdr = showGolden ? 'input / golden output' : 'input';
     // The table carries class `ttip-chunks` — conformance.js keys the popup grid on it.
     return '<table class="ttip-chunks"><thead><tr><th>' + escapeHtml(inputHdr) + '</th>' + header
-      + '</tr></thead><tbody>' + body + fin + '</tbody></table>';
+      + '</tr></thead><tbody>' + body + fin + '</tbody></table>'
+      + (golden && input.kind === 'text' ? '<details class="oracle-output"><summary>GOLDEN</summary><pre>' + outputBlock(golden.block, family, ctx) + '</pre></details>' : '');
   }
 
   // --- Parser configuration bullet list ---------------------------------------
@@ -539,6 +567,7 @@
     return escapeHtml(col.compact_prefix) + '-<span class="case-label-placeholder">'
       + escapeHtml(String(col.display_number)) + '</span>';
   }
+  window.__compactCaseLabelHtml = compactCaseLabelHtml;
 
   function popupCaseHeadingHtml(model) {
     const col = model.popupCase;
@@ -638,6 +667,10 @@
     }
     return h;
   }
+  function renderTooltip(model, fixtureHref) {
+    return buildTooltipHtml(model) + (fixtureHref ? '<div class="ttip-fixture"><a href="' + escapeAttr(fixtureHref) + '">Fixture YAML</a></div>' : '');
+  }
+  window.__renderConformanceTooltip = renderTooltip;
 
   // --- Compare bar (mirrors _compare_bar.html.j2) ----------------------------
   // Three engine columns (Dynamo / vLLM / SGLang); one .cmprow per candidate whose
@@ -1026,7 +1059,7 @@
       td.appendChild(ttip);
       // Empty .ttip now (so conformance.js's attachTooltip finds it); content built
       // lazily on first interaction from the keyed model (survives transpose clones).
-      registerTooltip(td, cell.tooltip);
+      registerTooltip(td, cell.tooltip, cell.fixture_href);
     }
     return td;
   }
@@ -1170,7 +1203,7 @@
     section.id = tab.id;
     section.className = 'tab-panel' + (tab.active ? ' active' : '');
     section.setAttribute('role', 'tabpanel');
-    if (multiTab) { section.setAttribute('aria-labelledby', tab.id + '-button'); }
+    section.setAttribute('aria-labelledby', tab.id + '-button');
     var hasCands = tab.candidates && tab.candidates.length;
     if (hasCands) {
       section.setAttribute('data-cmp-panel', 'true');
@@ -1207,7 +1240,7 @@
       + '<label class="checkbox-option cmp-detailed"><input type="checkbox" data-view-detailed> Detailed</label>'
       + '<button type="button" class="theme-toggle" data-theme-toggle'
       + ' title="Switch between light and dark">' + THEME_GLYPH[currentTheme()] + '</button>'
-      + '<label class="checkbox-option cmp-transpose"><input type="checkbox" data-transpose-toggle> Transpose</label>'
+      + '<label class="checkbox-option cmp-transpose"><input type="checkbox" data-transpose-toggle> Vertical</label>'
       + '<button type="button" class="cmp-reset" data-reset title="Clear all selections and reload defaults">Reset</button>'
       + '</span></div>';
     var tmp = document.createElement('div');
@@ -1272,6 +1305,7 @@
     if (!modelEl) { return; }  // no model blob; nothing to build.
     var page = hydratePage(JSON.parse(modelEl.textContent));
     if (!page || !page.tabs || !page.tabs.length) { return; }
+    window.__CONFORMANCE_PAGE = page;
 
     _usesFamily = !!(page.parser_ni && Object.keys(page.parser_ni).length);
     _familyMarkers = page.family_markers || {};
@@ -1279,7 +1313,7 @@
 
     var multiTab = page.tabs.length > 1;
     var newNodes = [];
-    if (multiTab) { newNodes.push(buildTabsBar(page)); }
+    newNodes.push(buildTabsBar(page));
     page.tabs.forEach(function (tab) { newNodes.push(buildPanel(tab, page, multiTab)); });
 
     // Replace the server-rendered tabs bar + panels in place with model-built

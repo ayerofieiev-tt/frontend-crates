@@ -79,8 +79,7 @@ run_ci() {  # the conformance-table CI gate; fail-fast, also runnable locally
   local status="$ROOT/conformance/CONFORMANCE_v2.json"
   test -s "$out"
   test -s "$status"
-  grep -q "TOOLCALLING.batch" "$out"
-  grep -q "REASONING.batch" "$out"
+  python3 "$TOOLS/validate_conformance_status.py" --html "$out" --unified-only-report --summary-only
   echo "conformance matrix rendered: $(wc -c < "$out") bytes"
   # The uploaded CI artifact name predates the v1/v2 split; keep it stable.
   \cp -f "$out" "$UTILS/CONFORMITY.html"

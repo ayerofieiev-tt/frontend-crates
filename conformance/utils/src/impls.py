@@ -78,3 +78,22 @@ FIXTURE_IMPL_ALIASES: dict[str, str] = {
 # structured `error: {kind, message}` block, which the renderer renders as `✗`
 # directly; a plain-string `error` stays a declared expected-error (`!`).
 PARSER_NOT_CAPTURED = "parser not captured"
+
+
+# Batch histories must not inherit streaming observations at the same version.
+UNIFIED_BATCH_IMPLS = ("dynamo_v1", "vllm_python_batch", "sglang_python_batch")
+BATCH_SOURCE_IMPL = {"dynamo_v1": "dynamo_v1", "vllm_python_batch": "vllm_python", "sglang_python_batch": "sglang_python"}
+BATCH_SOURCE_BLOCKERS = {("dynamo_v1", "9.2.13"): "Producer source unavailable: no release tag or crate publication for Dynamo 9.2.13; crates.io returned 404."}
+BATCH_DEFAULT_VERSIONS = {"dynamo_v1": "10.0.1", "sglang_python_batch": "0.5.14", "vllm_python_batch": "0.26.0"}
+
+VLLM_UNIFIED_PIPELINES = {'deepseek_v4': ('deepseek_v4', 'deepseek_v4'), 'deepseek_v41': ('deepseek_v4', 'deepseek_v4'), 'gemma4': ('gemma4', 'gemma4'), 'kimi_k3': ('kimi_k3', 'kimi_k3'), 'qwen3': ('qwen3', 'qwen3_coder'), 'glm47': ('glm47', 'glm47'), 'kimi_k2': ('kimi_k2', 'kimi_k2')}
+
+SGLANG_UNIFIED_PIPELINES = {'deepseek_v4': ('deepseek-v4', 'deepseekv4'), 'deepseek_v41': ('deepseek-v41', 'deepseekv41'), 'kimi_k3': ('kimi_k3', 'kimi_k3'), 'gemma4': ('gemma4', 'gemma4'), 'qwen3': ('qwen3', 'qwen3_coder'), 'glm47': ('glm45', 'glm47'), 'kimi_k2': ('kimi_k2', 'kimi_k2'), 'muse_glimmer': ('muse', 'muse')}
+
+DYNAMO_UNIFIED_PIPELINES = {"qwen3": ("qwen3", "qwen3_coder"), "kimi_k2": ("kimi_k25", "kimi_k2"), "glm47": ("glm45", "glm47"), "gemma4": ("gemma4", "gemma4"), "deepseek_v4": ("deepseek_v4", "deepseek_v4"), "deepseek_v41": ("deepseek_v4", "deepseek_v4"), "kimi_k3": ("kimi_k3", "kimi_k3")}
+
+def batch_capture_label(implementation: str, version: str) -> str:
+    source = next(spec for spec in IMPL_SPECS if spec.key == BATCH_SOURCE_IMPL[implementation])
+    name = "Dynamo" if source.engine == "dynamo" else source.display
+    label = f"{name} {version} · batch"
+    return label + (" (source unavailable)" if (implementation, version) in BATCH_SOURCE_BLOCKERS else "")

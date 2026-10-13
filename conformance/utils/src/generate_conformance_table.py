@@ -101,6 +101,12 @@ RUST_TOOL_CALLING_DIR = REPO_ROOT / "lib/parsers/src/tool_calling"
 # single source of truth (audit B1). build_stage_conformance stages impls.py next to
 # this file so the import works from the staged tests/parity layout too.
 from impls import (  # noqa: E402
+    UNIFIED_BATCH_IMPLS,
+    BATCH_DEFAULT_VERSIONS,
+    BATCH_SOURCE_BLOCKERS,
+    BATCH_SOURCE_IMPL,
+    IMPL_SPECS,
+    batch_capture_label,
     BASELINE_BATCH_IMPL,
     BASELINE_IMPLS,
     BASELINE_STREAM_IMPL,
@@ -1054,7 +1060,7 @@ def _candidate_name_key(label: str) -> str:
 
 # Publication status belongs to display provenance, not the capture version key.
 _CANDIDATE_VERSION_RE = re.compile(
-    r"\s(\d[\w.+]*)\s*(?:\[unpublished sha256:[a-f0-9]+\]\s*)?(?:\([^)]*\))?\s*$"
+    r"\s(\d[\w.+]*)\s*(?:\[unpublished sha256:[a-f0-9]+\]\s*)?(?:·\s*(?:batch|stream)\s*)?(?:\([^)]*\))?\s*$"
 )
 
 
@@ -1743,7 +1749,7 @@ def _tab_label(
 # is reimplemented in JS.
 import model as _model  # noqa: E402  (schema + serialization; leaf module)
 
-_MODE_PAREN_RE = re.compile(r"\(([^)]*)\)\s*$")
+_MODE_PAREN_RE = re.compile(r"(?:·\s*(batch|stream)(?:\s*\([^)]*\))?|\(([^)]*)\))\s*$")
 
 
 def _cand_engine_group(key: str) -> str:
@@ -1757,7 +1763,7 @@ def _parse_mode_of_label(label: str) -> str | None:
     m = _MODE_PAREN_RE.search(label)
     if not m:
         return None
-    inner = m.group(1)
+    inner = m.group(1) or m.group(2)
     if "stream" in inner:
         return "stream"
     if "batch" in inner:  # includes "jail+batch"
@@ -1856,9 +1862,12 @@ def _output_block_model(blk: object) -> dict | None:
     """A candidate's expected output block reduced to the model's raw fields."""
     if not isinstance(blk, dict):
         return None
+    blk = capture_stimulus.normalize_unavailable(blk)
     out: dict[str, Any] = {}
     if "unavailable" in blk:
         out["unavailable"] = blk["unavailable"]
+        if "unavailable_code" in blk:
+            out["unavailable_code"] = blk["unavailable_code"]
     if "exception" in blk:
         out["exception"] = blk["exception"]
     if "error" in blk:
@@ -1948,18 +1957,36 @@ def _input_model(case: dict) -> dict:
 
 
 def _toolcalling_tooltip_model(case: dict, output_kind: str, cand_meta: list[dict],
-                               dyn: object) -> dict:
+                               dyn: object, cmp_blocks: dict) -> dict:
     family = case.get("__family")
     case_id = case.get("__case_id", "")
     head = f"{case_id} — {family}" if (case_id and family) else (case_id or str(family or ""))
     impl_keys = _impl_keys_for_output_kind(output_kind)
     baseline = baseline_impl(impl_keys)
-    reasons = [
-        {"impl": f["impl"], "label": _IMPL_DISPLAY.get(f["impl"], f["impl"]),
-         "reason": f["reason"], "intentional": f["intentional"]}
-        for f in markers.comparison_facts(case, impl_keys, baseline)
-        if f["impl"] != baseline and f["agrees"] is False and f["reason"]
-    ]
+    expected = _expected(case)
+    reason_impls = set(impl_keys) | {BASELINE_BATCH_IMPL, BASELINE_STREAM_IMPL}
+    reason_cmp = markers.cmp_model({**cmp_blocks, **{
+        "__reason_" + impl: _impl_get(expected, impl) for impl in sorted(reason_impls)
+    }})
+    reason_entries = {impl: reason_cmp["__reason_" + impl] for impl in reason_impls}
+    reasons = _model.comparison_reasons(
+        markers.comparison_facts(case, impl_keys, baseline), _IMPL_DISPLAY, baseline, reason_entries,
+    )
+    if case.get("__known_divergence"):
+        batch_key = next((key for key in cmp_blocks if key.startswith(BASELINE_BATCH_IMPL + "-b-")), None)
+        for stream_key, stream_block in cmp_blocks.items():
+            if not batch_key or not stream_key.startswith(BASELINE_STREAM_IMPL + "-s-"):
+                continue
+            note = _explanation(stream_block)
+            if not note:
+                continue
+            pair_entries = {BASELINE_BATCH_IMPL: reason_cmp[batch_key],
+                            BASELINE_STREAM_IMPL: reason_cmp[stream_key]}
+            known_reasons = _model.comparison_reasons(
+                [{"impl": BASELINE_STREAM_IMPL, "agrees": False, "reason": note, "intentional": True}],
+                _IMPL_DISPLAY, BASELINE_BATCH_IMPL, pair_entries,
+            )
+            reasons.extend(reason for reason in known_reasons if reason not in reasons)
     dyn_leak = _dynamo_tool_call_leak(dyn) if isinstance(dyn, dict) else None
     baseline_block = None
     dyn_batch = _impl_get(case.get("batch_expected") or {}, BASELINE_BATCH_IMPL)
@@ -2011,7 +2038,7 @@ def _toolcalling_cell_model(case: dict | None, mode: str, family: str, sub: str,
                                 sub=sub, col_group=col_group, band=band, fixture_href=href,
                                 status=status, cmp=cmp, facts=facts, tooltip=tooltip,
                                 known_divergence=bool(case.get("__known_divergence")))
-    tooltip = _toolcalling_tooltip_model(case, output_kind, cand_meta, dyn or {})
+    tooltip = _toolcalling_tooltip_model(case, output_kind, cand_meta, dyn or {}, cmp_blocks)
     return _model.make_cell(kind="cell", case_id=case.get("__case_id"), family=family,
                             sub=sub, col_group=col_group, band=band, fixture_href=href,
                             status=status, cmp=cmp, facts=facts, tooltip=tooltip,
@@ -2141,6 +2168,12 @@ _UNIFIED_PEER_SOURCES = {
         "stream": True, "legacy_key": None,
     },
 }
+
+for _batch_impl in UNIFIED_BATCH_IMPLS:
+    _UNIFIED_PEER_SOURCES[_batch_impl] = {
+        "impl": next(spec.engine for spec in IMPL_SPECS if spec.key == BATCH_SOURCE_IMPL[_batch_impl]), "label": batch_capture_label(_batch_impl, "{version}"),
+        "stream": False, "legacy_key": None, "batch": True,
+    }
 
 
 def _unified_classify(family: str, golden: list, got: list) -> str:
@@ -2312,7 +2345,11 @@ def _unified_dynamo_label() -> str:
 
 
 def _unified_capture_failure(record: dict) -> dict:
-    return {key: record[key] for key in ("error", "unavailable") if record.get(key)}
+    record = capture_stimulus.normalize_unavailable(record)
+    failure = {key: record[key] for key in ("error", "unavailable") if record.get(key)}
+    if "unavailable" in failure and "unavailable_code" in record:
+        failure["unavailable_code"] = record["unavailable_code"]
+    return failure
 
 
 def _load_unified_fixtures(base: Path):
@@ -2351,6 +2388,7 @@ def _load_unified_fixtures(base: Path):
                     current = inputs.get((fp.parent.name, k))
                     if current is not None:
                         implementation, version = name.split("-", 1)
+                        cd = {**cd, "producer_origin": doc.get("capture_origin"), "inherited_from": doc.get("inherited_from")}
                         cd = capture_stimulus.select_peer_observation(
                             cd, current, implementation=implementation, version=version,
                         )
@@ -2413,7 +2451,7 @@ def _load_unified_fixtures(base: Path):
     # separate instead of silently replacing 0.25.1 with the newest 0.26.x shard.
     peer_by_ver = {}
     for impl, vers in engine_versions.items():
-        if impl not in ("vllm_python", "vllm_rust", "sglang_python"):
+        if impl not in _UNIFIED_PEER_SOURCES:
             continue
         merged = peer_by_ver.setdefault(impl, {})
         for ver, dirname in vers:
@@ -2459,7 +2497,7 @@ def _load_unified_fixtures(base: Path):
 
     shared_schema_signature = _schema_signature(_explicit_case_schemas(unified_tools()) or [])
     cases = []
-    caps = {"vllm_python": {}, "vllm_rust": {}, "sglang_python": {}}
+    caps = {impl: {} for impl in _UNIFIED_PEER_SOURCES}
     for (fam, key), inp in sorted(inputs.items()):
         scenario = inp.get("scenario") or key
         cid = f"UNIFIED.{scenario}.{fam}"
@@ -2511,14 +2549,14 @@ def _load_unified_fixtures(base: Path):
             "dynamo_verdict": None, "vllm_verdict": None, "vllm_note": None,
             "peer_by_ver": {
                 impl: {
-                    ver: {"historical_capture_note": doc.get("historical_capture_note"), **(_unified_capture_failure(doc) or {
+                    ver: {"historical_capture_note": doc.get("historical_capture_note"), "batch_final": doc.get("batch_final"), "producer_origin": doc.get("producer_origin"), "inherited_from": doc.get("inherited_from"), **(_unified_capture_failure(doc) or {
                         "assembled": doc.get("assembled") or [],
                         "chunks": [chunk.get("expected") or [] for chunk in (doc.get("chunks") or [])],
                     })}
                     for ver, docs in peer_by_ver.get(impl, {}).items()
                     if (doc := docs.get((fam, key))) is not None
                 }
-                for impl in ("vllm_python", "vllm_rust", "sglang_python")
+                for impl in _UNIFIED_PEER_SOURCES
             },
             # A peer version with no entry for this family has no parser. A version
             # that captured the family but not this case predates the case instead.
@@ -2528,7 +2566,7 @@ def _load_unified_fixtures(base: Path):
                     for ver, docs in peer_by_ver.get(impl, {}).items()
                     if any(captured_family == fam for captured_family, _key in docs)
                 )
-                for impl in ("vllm_python", "vllm_rust", "sglang_python")
+                for impl in _UNIFIED_PEER_SOURCES
             },
             "chunks": [
                 {"delta_text": ic.get("delta_text", ""),
@@ -2536,7 +2574,7 @@ def _load_unified_fixtures(base: Path):
                 for i, ic in enumerate(in_chunks)
             ],
         })
-        for impl in ("vllm_python", "vllm_rust", "sglang_python"):
+        for impl in _UNIFIED_PEER_SOURCES:
             edoc = engine_cases.get(impl, {}).get((fam, key))
             if edoc is None:
                 continue
@@ -2554,7 +2592,7 @@ def _load_unified_fixtures(base: Path):
         versions[impl] = max(captures, key=fixtures._version_sort_key)
     # Captured history stays separate from the selected source, which may be missing.
     versions["dynamo_v2_all"] = list(dynamo_by_ver)
-    for impl in ("vllm_python", "vllm_rust", "sglang_python"):
+    for impl in _UNIFIED_PEER_SOURCES:
         versions[f"{impl}_all"] = sorted(
             peer_by_ver.get(impl, {}), key=fixtures._version_sort_key
         )
@@ -2659,8 +2697,8 @@ def _unified_tab_model(artifact_root: Path, hrefs: dict) -> dict | None:
                    else f"{source}@{ver}")
             peer_specs.append({
                 "key": key, "impl": spec["impl"], "source": source,
-                "version": ver, "label": spec["label"].format(version=ver),
-                "stream": spec["stream"],
+                "version": ver, "label": batch_capture_label(source, ver) if spec.get("batch") else spec["label"].format(version=ver),
+                "stream": spec["stream"], "batch": spec.get("batch", False),
             })
     candidates = [
         # Dynamo is the default REF (starred): the cell color reflects Dynamo vs GOLDEN.
@@ -2685,6 +2723,10 @@ def _unified_tab_model(artifact_root: Path, hrefs: dict) -> dict | None:
     for spec in peer_specs:
         pc = _cand(spec["key"], spec["label"], "C", spec["version"])
         pc["impl"] = spec["impl"]
+        if spec["batch"]:
+            pc["source_blocker"] = BATCH_SOURCE_BLOCKERS.get((spec["source"], spec["version"]))
+            pc["parse_mode"] = "batch"
+            pc["preferred_default"] = spec["version"] == BATCH_DEFAULT_VERSIONS[spec["source"]]
         candidates.append(pc)
 
     rows = []
@@ -2877,7 +2919,7 @@ def _unified_tab_model(artifact_root: Path, hrefs: dict) -> dict | None:
                 expected = {"dynamo": [] if dynamo_failure else ch.get("dynamo") or []}
                 for spec in peer_specs:
                     chunks = peer_results[spec["key"]]["chunks"]
-                    expected[spec["key"]] = chunks[i] if i < len(chunks) else []
+                    expected[spec["key"]] = ({"unavailable": "Batch: streaming order/chunk timing unavailable"} if spec["batch"] else chunks[i] if i < len(chunks) else [])
                 for pv, result in prev_results_by_ver.items():
                     pchunks = result["chunks"]
                     expected[f"dynamo@{pv}"] = pchunks[i] if i < len(pchunks) else []
@@ -2923,7 +2965,7 @@ def _unified_tab_model(artifact_root: Path, hrefs: dict) -> dict | None:
                      "block": {"events": gold}},
                 ] + [
                     {"key": spec["key"], "label": spec["label"], "impl": spec["impl"],
-                     "version": spec["version"], "parse_mode": "unified",
+                     "version": spec["version"], "parse_mode": "batch" if spec["batch"] else "unified",
                      "leak": peer_results[spec["key"]]["verdict"] == "LEAK",
                      "block": (peer_results[spec["key"]]["failure"] or {"unavailable": (
                                     f"not captured at {spec['version']}; this case postdates that capture"
@@ -2933,7 +2975,11 @@ def _unified_tab_model(artifact_root: Path, hrefs: dict) -> dict | None:
                                ({"error": peer_results[spec["key"]]["error"]}
                                 if peer_results[spec["key"]]["error"] else
                                 {"events": peer_results[spec["key"]]["events"],
-                                 "verdict": peer_results[spec["key"]]["verdict"]}))}
+                                 "verdict": peer_results[spec["key"]]["verdict"],
+                                 **({"batch_final": peer_results[spec["key"]]["cap"]["batch_final"],
+                                     "producer_origin": peer_results[spec["key"]]["cap"].get("producer_origin"),
+                                     "inherited_from": peer_results[spec["key"]]["cap"].get("inherited_from")}
+                                    if spec["batch"] else {})}))}
                     for spec in peer_specs
                 ] + [
                     # One popup column per older Dynamo capture, newest-first. A version
@@ -2949,6 +2995,11 @@ def _unified_tab_model(artifact_root: Path, hrefs: dict) -> dict | None:
                 "baseline": None, "reasons": reasons, "dynamo_notes": [], "refs": [],
                 "leak_note": None, "na_note": None, "duplicate_of": None,
             }
+            for spec in peer_specs:
+                if spec["batch"]:
+                    cap = peer_results[spec["key"]]["cap"] or {}
+                    payload = next(item["block"] for item in tooltip["candidates"] if item["key"] == spec["key"])
+                    payload.update({"producer_origin": cap.get("producer_origin"), "inherited_from": cap.get("inherited_from")})
             cells[s] = {
                 "kind": "cell", "case_id": unified_taxonomy.numbered_id(s), "family": f, "sub": s,
                 "col_group": unified_taxonomy.display_section(s)[0], "band": _band(g_num),
@@ -2987,8 +3038,8 @@ def _unified_tab_model(artifact_root: Path, hrefs: dict) -> dict | None:
     return {
         "id": "tab-unified", "kind": "unified", "active": False, "mode": "unified",
         "no_parser_col": True,  # parser variant is already encoded in each engine's name
-        "label": "Unified v2 (reasoning + tools)",
-        "label_html": 'Unified v2 <span class="tab-sub">(reasoning + tools)</span>',
+        "label": "Unified",
+        "label_html": 'Unified',
         "tab_title": ("Unified: one ordered event stream (reasoning + content + tool calls) "
                       "measured against the GOLDEN oracle"),
         "columns": columns, "column_groups": column_groups,
@@ -2999,41 +3050,16 @@ def _unified_tab_model(artifact_root: Path, hrefs: dict) -> dict | None:
                           "parser version. vLLM Rust 0.26.0 uses the native "
                           "UnifiedParser for Gemma4 and CombinedParser for Qwen3/Kimi K2."),
         "toolbar_desc_html": (
-            'Oracle = <strong>GOLDEN</strong> (authored, best-effort recovery) · '
-            'Default Reference = <strong>Dynamo v2 Rust</strong>. '
-            'Compare with historical Dynamo and captured peer versions. '
-            'A parser that does not exist for a family is shown as n/a. '
-            'A cell is red when the REF — the starred engine '
-            '(default Dynamo) — DIVERGES from golden in any class: leaked markup (↯), '
-            'merged/reordered events, or dropped content (✗). A green cell means the REF '
-            'matches golden exactly; the NΔ count is how many Compare-with engines diverge '
-            '(informational — they never color the cell). Star a different engine to judge '
-            'it instead.'),
+            'Oracle = <strong>GOLDEN</strong> (authored ordered events). '
+            'Compare historical reasoning + batch tool pipelines and existing Unified captures. '
+            'Batch final assembly is compared to the same ordered GOLDEN: lost interleaving is a mismatch. '
+            'Batch chunk timing is unavailable. Unsupported requests and unavailable producer sources are explicit.'),
         "details_note_html": None,
     }
 
 
-def build_combined_model(output_path: Path | None = None,
-                         artifact_root: Path | None = None,
-                         *, stamp: str, sha: str | None,
-                         github_repository: str | None = None,
-                         github_revision: str | None = None,
-                         fixture_base_url: str | None = None) -> dict:
-    """Assemble the whole-page JSON model (both toolcalling tabs + both reasoning
-    tabs). Same loaded data + comparison semantics as render_combined_html."""
-    artifact_root = (artifact_root or REPO_ROOT).resolve()
-    resolved_output_path = _resolve_output_path(
-        output_path, artifact_root, "tests/parity/CONFORMANCE.html")
-    hrefs = common.set_links(
-        resolved_output_path,
-        artifact_root,
-        github_repository=github_repository,
-        github_revision=github_revision,
-        fixture_base_url=fixture_base_url,
-    )
-
-    tabs: list[dict] = []
-
+def _legacy_tab_models(hrefs: dict) -> list[dict]:
+    tabs = []
     # --- Tool Calling (batch data): merged v1-batch + v2-stream-on-batch ---
     batch_spec = _load_panel_cases("batch")
     batch_href = _plain_href_rewriter("toolcalling", hrefs["toolcalling_fixtures"])
@@ -3123,13 +3149,38 @@ def build_combined_model(output_path: Path | None = None,
         })
         tabs.append(rtab)
 
-    # --- Unified (reasoning + tools) tab: golden oracle vs Dynamo (LIVE) + vLLM ---
+    return tabs
+
+
+def build_combined_model(output_path: Path | None = None,
+                         artifact_root: Path | None = None,
+                         *, stamp: str, sha: str | None, include_legacy: bool = False,
+                         github_repository: str | None = None,
+                         github_revision: str | None = None,
+                         fixture_base_url: str | None = None) -> dict:
+    """Build the public Unified report; legacy tabs are opt-in regression fixtures."""
+    artifact_root = (artifact_root or REPO_ROOT).resolve()
+    resolved_output_path = _resolve_output_path(
+        output_path, artifact_root, "tests/parity/CONFORMANCE.html")
+    hrefs = common.set_links(
+        resolved_output_path,
+        artifact_root,
+        github_repository=github_repository,
+        github_revision=github_revision,
+        fixture_base_url=fixture_base_url,
+    )
+
+    tabs: list[dict] = _legacy_tab_models(hrefs) if include_legacy else []
+
     unified_tab = _unified_tab_model(artifact_root, hrefs)
-    if unified_tab:
-        tabs.append(unified_tab)
+    if unified_tab is None:
+        raise ValueError("Unified inputs are required for the conformance report")
+    tabs.append(unified_tab)
 
     if tabs:
-        tabs[0]["active"] = True
+        default_tab = next((tab for tab in tabs if tab["id"] == "tab-unified"), tabs[0])
+        for tab in tabs:
+            tab["active"] = tab is default_tab
 
     meta = {
         "title": "Dynamo Parser v2 Conformance Table",
@@ -3181,6 +3232,7 @@ def render_combined_html(
     github_repository: str | None = None,
     github_revision: str | None = None,
     fixture_base_url: str | None = None,
+    include_legacy: bool = False,
 ) -> str:
     artifact_root = (artifact_root or REPO_ROOT).resolve()
     resolved_output_path = _resolve_output_path(
@@ -3204,6 +3256,7 @@ def render_combined_html(
     # the Python HTML emitters (render_html_panel/render_cell_html/tooltip builders) are
     # gone; the template emits a skeleton and the model blob, the view builds the DOM.
     page_model = build_combined_model(
+        include_legacy=include_legacy,
         output_path=output_path,
         artifact_root=artifact_root,
         stamp=stamp,
@@ -3228,6 +3281,7 @@ def render_combined_html(
             conformance_js=_read_asset("conformance.js"),
             colorize_js=_read_asset("colorize.js"),
             conformance_view_js=_read_asset("conformance_view.js"),
+            comparison_layout_js=_read_asset("comparison_layout.js"),
             sha=sha,
             short_sha=sha[:12] if sha else "",
             command="conformance/utils/render_table_v2.sh",

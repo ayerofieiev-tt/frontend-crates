@@ -68,7 +68,6 @@ def _stub(name, **attrs):
 
 def _load(reasoning_parser):
     """Import the harness against a stubbed SGLang carrying `reasoning_parser`."""
-    # `Tool`/`Function` build the request-specific schemas passed to the detector.
     box = type("box", (), {"__init__": lambda self, **kw: self.__dict__.update(kw)})
     mods = {
         "sglang": _stub("sglang", __version__="stub"),

@@ -29,7 +29,7 @@ import traceback
 import vllm
 import yaml
 
-from capture_stimulus import capture_input, unavailable_result, validate_family_scoped_cases
+from capture_stimulus import batch_final_events, capture_input, unavailable_result, validate_family_scoped_cases
 from unified_tools import openai_tools
 
 from vllm.entrypoints.openai.chat_completion.protocol import ChatCompletionRequest
@@ -38,15 +38,7 @@ from vllm.parser.parser_manager import ParserManager
 # family -> (reasoning_parser_name, tool_parser_name) for the released Python
 # parser registrations used by the Unified corpus. DeepSeek V4.1 shares the
 # `deepseek_v4` registration in vLLM 0.27.1.
-FAMILY_PARSERS = {
-    "deepseek_v4": ("deepseek_v4", "deepseek_v4"),
-    "deepseek_v41": ("deepseek_v4", "deepseek_v4"),
-    "gemma4": ("gemma4", "gemma4"),
-    "kimi_k3": ("kimi_k3", "kimi_k3"),
-    "qwen3": ("qwen3", "qwen3_coder"),
-    "glm47": ("glm47", "glm47"),
-    "kimi_k2": ("kimi_k2", "kimi_k2"),
-}
+from impls import VLLM_UNIFIED_PIPELINES as FAMILY_PARSERS
 
 TOOLS = openai_tools()
 FINISH_SENTINEL = "‹finish›"
@@ -210,17 +202,11 @@ def _tool_args_json(args):
 
 def _assembled_events(reasoning, content, tool_calls):
     """Project vLLM's (reasoning, content, tool_calls) final message to events."""
-    events = []
-    if reasoning:
-        events.append({"kind": "reasoning", "text": reasoning})
-    if content:
-        events.append({"kind": "text", "text": content})
+    calls = []
     for tc in tool_calls or []:
         fn = _fn(tc)
-        events.append({"kind": "tool_call",
-                       "name": getattr(fn, "name", None) or "",
-                       "arguments": _tool_args_json(getattr(fn, "arguments", None))})
-    return events
+        calls.append({"name": fn.name or "", "arguments": _tool_args_json(fn.arguments)})
+    return batch_final_events({"reasoning_text": reasoning or "", "normal_text": content or "", "calls": calls})
 
 
 def _delta_events(dm):

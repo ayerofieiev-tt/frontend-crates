@@ -212,6 +212,7 @@ UNIFIED_GROUP_LABEL = {
     "kimi": "Single Family Test: Kimi K3 XTML",
     "muse": "Single Family Test: Muse-specific",
 }
+V1_SPLIT_SCENARIOS = tuple(scenario for scenario, taxonomy in UNIFIED_TAX.items() if taxonomy[0] == "v1_split")
 
 
 def tax(scenario):

@@ -945,6 +945,7 @@
     var h = '';
     for (var i = 0; i < cols.length; i++) {
       var c = cols[i];
+      var startsGroup = i === 0 || cols[i - 1].group_key !== c.group_key;
       var label = String(c.label || '');
       var shortLabel = c.display_number != null
         ? compactCaseLabelHtml(c)
@@ -953,7 +954,7 @@
       var fullId = c.case_id || (label.indexOf(prefix) === 0 ? label : prefix + label);
       // The rich grammar popup replaces the old native `title` tooltip (which could
       // only carry the one-line description, and rendered alongside the new popup).
-      h += '<th class="case-sub ' + escapeAttr(c.band) + '" data-col-hide-group="'
+      h += '<th class="case-sub ' + escapeAttr(c.band) + (startsGroup ? ' case-group-start' : '') + '" data-col-hide-group="'
         + escapeAttr(c.group_key) + '"><a href="' + href + '" aria-label="' + escapeAttr(fullId) + '">'
         + '<span class="case-label-full">' + escapeHtml(label) + '</span> '
         + '<span class="case-label-short' + (c.display_number != null ? ' case-label-reference' : '')
@@ -986,21 +987,22 @@
     return t.querySelector('td');
   }
 
-  function buildCellNode(cell, col) {
+  function buildCellNode(cell, col, groupStart) {
     var td = document.createElement('td');
+    var groupClass = groupStart ? ' case-group-start' : '';
     if (!cell) {
       // Defensive: a column with no matching cell renders as an empty blank slot.
-      td.className = ('cell todo ' + (col.band || '')).trim();
+      td.className = ('cell todo ' + (col.band || '') + groupClass).trim();
       td.setAttribute('data-col-hide-group', col.group_key || '');
       return td;
     }
     if (cell.kind === 'blank') {
-      td.className = ('cell todo ' + (cell.band || '')).trim();
+      td.className = ('cell todo ' + (cell.band || '') + groupClass).trim();
       td.setAttribute('data-col-hide-group', cell.col_group || '');
       return td;
     }
     // kind 'cell' or 'missing': a real (comparable) cell.
-    td.className = ('cell ' + (cell.band || '')).trim();
+    td.className = ('cell ' + (cell.band || '') + groupClass).trim();
     td.setAttribute('data-col-hide-group', cell.col_group || '');
     // data-family drives ONLY the reference-aware "not implemented for family X" note
     // (the PARSER_NI path). Emit it only on pages that carry a parser_ni map (the v2
@@ -1089,7 +1091,7 @@
     var cells = row.cells || {};
     for (var i = 0; i < cols.length; i++) {
       var c = cols[i];
-      tr.appendChild(buildCellNode(cells[c.sub], c));
+      tr.appendChild(buildCellNode(cells[c.sub], c, i === 0 || cols[i - 1].group_key !== c.group_key));
       var next = cols[i + 1];
       if (!next || next.group_key !== c.group_key) {
         tr.appendChild(placeholderTd(c.group_key));

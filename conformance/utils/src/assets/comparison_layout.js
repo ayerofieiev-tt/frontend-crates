@@ -35,11 +35,18 @@
   const legacyBaseParam = 'base_' + tab.id;
   const legacyCompareParam = 'cmp_' + tab.id;
   const legacy = params.has(legacyBaseParam) || params.has(legacyCompareParam)
-    ? [params.get(legacyBaseParam), ...(params.get(legacyCompareParam) || '').split(',')]
-      .filter(key => key && key !== 'golden' && byKey.has(key))
+    ? [params.has(legacyBaseParam) ? params.get(legacyBaseParam) : preferred[0],
+      ...(params.get(legacyCompareParam) || '').split(',')]
+      .map(key => key && key !== 'golden' && byKey.has(key) ? key : '')
     : null;
   const requested = params.has(slotsParam) ? (params.get(slotsParam) || '').split(',') : legacy;
-  const initial = requested === null ? preferred : requested;
+  const explicitNone = requested && requested.map(value => value === 'none');
+  const explicitEngines = requested && requested.map(value => {
+    const engine = value.startsWith('@') ? value.slice(1) : '';
+    return engines.includes(engine) ? engine : null;
+  });
+  const initial = requested === null ? preferred : requested.map((value, index) =>
+    value === 'none' || explicitEngines[index] ? '' : value);
   const overflow = initial.filter(Boolean).length > 3;
   const slots = [null, null, null];
   const slotEngines = [...engines];
@@ -52,7 +59,11 @@
       else { seen.add(key); slotEngines[index] = engineOf(byKey.get(key)); }
     });
   }
-  initial.slice(0, 3).forEach((key, index) => { slots[index] = key || null; });
+  initial.slice(0, 3).forEach((key, index) => {
+    slots[index] = key || null;
+    if (index > 0 && explicitNone && explicitNone[index]) slotEngines[index] = null;
+    else if (index > 0 && explicitEngines && explicitEngines[index]) slotEngines[index] = explicitEngines[index];
+  });
   normalizeSlots();
 
   const selector = document.createElement('section');
@@ -67,22 +78,30 @@
   const controls = document.createElement('div');
   controls.className = 'capture-slot-controls';
   const escapeHtml = value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const escapeAttr = value => escapeHtml(value).replace(/"/g, '&quot;');
   const shortCaptureLabel = (capture, engine) => {
     const label = String(capture && (capture.label || capture.version || capture.key) || 'None');
     const prefix = { dynamo: /^Dynamo\s+/, sglang: /^SGLang(?: Python)?\s+/, vllm: /^vLLM(?: Python)?\s+/ }[engine];
-    return label.replace(prefix, '');
+    const shortLabel = label.replace(prefix, '');
+    return engine === 'dynamo' && capture && capture.parse_mode === 'batch'
+      ? shortLabel.replace(/\s·\s*batch$/, ' · v2 batch')
+      : shortLabel;
   };
+  const captureTitle = (capture, engine) => engine === 'dynamo' && capture && capture.parse_mode === 'batch'
+    ? 'Unified v2 batch corpus; produced by the Dynamo v1 parser using legacy batch APIs, without a jail buffer.'
+    : String(capture && (capture.label || capture.version || capture.key) || 'None');
   function candidateOptions(engine, slot, selectedKey) {
+    if (!engine) return '';
     const allowNone = slot !== 0;
     const noneOption = allowNone
       ? '<option value=""' + (!selectedKey ? ' selected' : '') + '>None</option>'
       : '';
-    if (!engine) return noneOption;
     return noneOption + (byEngine.get(engine) || []).map(item => {
       const duplicate = slots.some((key, index) => index !== slot && key === item.key);
       const missing = !hasCapture(item.key);
       const label = shortCaptureLabel(item, engine);
       return '<option value="' + item.key.replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '"'
+        + ' title="' + escapeAttr(captureTitle(item, engine)) + '"'
         + (selectedKey === item.key ? ' selected' : '') + (duplicate || missing ? ' disabled' : '') + '>'
         + label.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         + (duplicate ? ' — selected in another slot' : missing ? ' — no captured results' : '') + '</option>';
@@ -106,8 +125,13 @@
   panel._comparisonSelection = selection;
   function persist() {
     const url = new URL(window.location.href);
-    const current = state.slots.join(',');
-    if (state.slots.every((key, index) => key === preferred[index])) url.searchParams.delete(slotsParam);
+    const current = state.slots.map((key, index) => {
+      const engine = state.engines[index];
+      return !engine ? 'none' : key || (engine === engines[index] ? '' : '@' + engine);
+    }).join(',');
+    const isDefault = state.slots.every((key, index) => key === preferred[index])
+      && state.engines.every((engine, index) => engine === engines[index]);
+    if (isDefault) url.searchParams.delete(slotsParam);
     else url.searchParams.set(slotsParam, current);
     url.searchParams.delete(legacyBaseParam);
     url.searchParams.delete(legacyCompareParam);
@@ -120,7 +144,6 @@
     state.slots.forEach((key, index) => {
       const capture = byKey.get(key);
       const engine = state.engines[index];
-      const fullLabel = capture ? capture.label || capture.version || capture.key : 'None';
       const slot = controls.querySelector('.capture-slot:nth-child(' + (index + 1) + ')');
       slot.dataset.engine = engine || 'none';
       slot.querySelector('[data-slot-engine]').textContent = engineName(engine);
@@ -136,10 +159,12 @@
         }
         captureSelect.innerHTML = candidateOptions(engine, index, key);
         captureSelect.value = key || '';
+        captureSelect.disabled = false;
         captureSelect.setAttribute('aria-label', 'Choose capture for comparison slot '
-          + (index + 1) + ': ' + engineName(engine) + ', ' + fullLabel);
+          + (index + 1) + ': ' + engineName(engine) + ', ' + shortCaptureLabel(capture, engine));
       } else {
-        captureControl.innerHTML = '<span class="capture-slot-none" data-slot-none="' + index + '">None</span>';
+        captureControl.innerHTML = '<span class="capture-slot-none" data-slot-none="' + index
+          + '">No comparison selected</span>';
       }
       slot.querySelector('[data-slot-open]').setAttribute('aria-label', 'Edit comparison slot ' + (index + 1) + ': ' + engineName(engine));
     });
@@ -174,7 +199,7 @@
       + '<label>Engine <select data-picker-engine>' + choices.map(key => '<option value="' + key + '"'
         + (key === (engine || 'none') ? ' selected' : '') + '>' + engineName(key === 'none' ? null : key) + '</option>').join('')
       + '</select></label>'
-      + '<label data-picker-capture-label' + (engine ? '' : ' hidden') + '>Capture <select data-picker-capture>'
+      + '<label data-picker-capture-label>Capture <select data-picker-capture' + (engine ? '' : ' disabled') + '>'
       + candidateOptions(engine, slot, state.slots[slot]) + '</select></label>';
     const pickerCapture = picker.querySelector('[data-picker-capture]');
     if (pickerCapture) pickerCapture.value = state.slots[slot] || '';
@@ -219,8 +244,9 @@
         ? current : options.find(item => item.key === preferredKey) || options[0] || null;
       state.engines[activeSlot] = engine;
       state.slots[activeSlot] = selected && selected.key || null;
-      captureLabel.hidden = !engine;
+      captureLabel.hidden = false;
       const captureSelect = picker.querySelector('[data-picker-capture]');
+      captureSelect.disabled = !engine;
       captureSelect.innerHTML = candidateOptions(engine, activeSlot, state.slots[activeSlot]);
       captureSelect.value = state.slots[activeSlot] || '';
       update();

@@ -38,8 +38,6 @@ def reference_page(rendered_page: Path, tmp_path_factory) -> Path:
     script = "<script>\n" + layout + "\n</script>"
     assert page.count(script) == 1
     page = page.replace(script, "")
-    page = page.replace("  window.__comparisonLayoutEnabled = true;", "")
-    page = page.replace("  document.documentElement.classList.add('comparison-page', 'comparison-pending');", "")
     out = tmp_path_factory.mktemp("reference-render") / "CONFORMANCE_reference.html"
     out.write_text(page)
     return out

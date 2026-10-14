@@ -167,7 +167,6 @@
     });
   }
   function applyCtl(panel) {
-    if (window.__comparisonLayoutEnabled && !panel._comparisonSelection) return;
     const ctl = panelCtl(panel);
     if (!ctl) { return; }
     const oracle = panel.id === 'tab-unified' && !!panel._comparisonSelection;
@@ -448,10 +447,11 @@
     document.body.classList.toggle('view-overview', !detailed);
     document.body.classList.toggle('view-details', detailed);
     viewCheckboxes.forEach(function (cb) { cb.checked = detailed; });
-    // Compare-with only exists in Detailed. Leaving it returns to one reference (★),
-    // rather than carrying a hidden comparison into the next Detailed session.
-    if (!window.__comparisonLayoutEnabled && !detailed && Object.keys(cmpDefaults).length > 0) {
+    // Legacy tabs keep their existing compare reset. Unified's capture selector owns
+    // this selection across Overview and Detailed, so its hidden controls must stay in sync.
+    if (!detailed && Object.keys(cmpDefaults).length > 0) {
       document.querySelectorAll('.tab-panel').forEach(function (panel) {
+        if (panel._comparisonSelection) { return; }
         const ctl = panelCtl(panel);
         if (!ctl) { return; }
         ctl.querySelectorAll('input.cmp-on:not(:disabled)').forEach(function (cb) {
@@ -465,8 +465,7 @@
     }
   }
 
-  if (!window.__comparisonLayoutEnabled) initCompare();
-  else initCompareInputs();
+  initCompare();
   applyView(readDetailed(), false);
   viewCheckboxes.forEach(function (cb) {
     cb.addEventListener('change', function () { applyView(cb.checked, true); });
@@ -1160,7 +1159,7 @@
     url.searchParams.delete('transpose');
     url.searchParams.delete('vertical');
     if (enabled) {
-      url.searchParams.set(window.__comparisonLayoutEnabled ? 'vertical' : 'transpose', '1');
+      url.searchParams.set('transpose', '1');
     }
     window.history.replaceState(null, '', url.toString());
   }
@@ -1394,16 +1393,11 @@
 
   function applyTransposeMode(enabled, shouldUpdateUrl) {
     document.body.classList.toggle('transpose-mode', Boolean(enabled));
-    document.querySelectorAll('.tab-panel').forEach(panel => {
-      if (panel._comparisonSelection) panel._comparisonSelection.setVertical(Boolean(enabled));
-    });
     if (transposeToggle) {
       transposeToggle.checked = Boolean(enabled);
     }
     if (enabled) {
-      if (!window.__comparisonLayoutEnabled) {
-        document.querySelectorAll('.tab-panel').forEach(ensureTransposed);
-      }
+      document.querySelectorAll('.tab-panel').forEach(ensureTransposed);
     }
     document.documentElement.classList.remove('transpose-pending');
     if (shouldUpdateUrl) {

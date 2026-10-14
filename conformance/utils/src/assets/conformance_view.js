@@ -1203,7 +1203,8 @@
     section.id = tab.id;
     section.className = 'tab-panel' + (tab.active ? ' active' : '');
     section.setAttribute('role', 'tabpanel');
-    section.setAttribute('aria-labelledby', tab.id + '-button');
+    if (multiTab) { section.setAttribute('aria-labelledby', tab.id + '-button'); }
+    else { section.setAttribute('aria-label', tab.label || 'Conformance report'); }
     var hasCands = tab.candidates && tab.candidates.length;
     if (hasCands) {
       section.setAttribute('data-cmp-panel', 'true');
@@ -1226,16 +1227,19 @@
   }
 
   function buildTabsBar(page) {
-    var html = '<div class="tabs" role="tablist">';
-    (page.tabs || []).forEach(function (t) {
-      html += '<button class="tab-button' + (t.active ? ' active' : '') + '"'
-        + ' id="' + escapeAttr(t.id) + '-button" type="button" role="tab"'
-        + ' aria-selected="' + (t.active ? 'true' : 'false') + '"'
-        + ' aria-label="' + escapeAttr(t.tab_title || '') + '"'
-        + ' title="' + escapeAttr(t.tab_title || '') + '"'
-        + ' data-tab-target="' + escapeAttr(t.id) + '">'
-        + (t.label_html || escapeHtml(t.label || '')) + '</button>';
-    });
+    var multiTab = (page.tabs || []).length > 1;
+    var html = '<div class="tabs"' + (multiTab ? ' role="tablist"' : ' role="toolbar" aria-label="Report controls"') + '>';
+    if (multiTab) {
+      (page.tabs || []).forEach(function (t) {
+        html += '<button class="tab-button' + (t.active ? ' active' : '') + '"'
+          + ' id="' + escapeAttr(t.id) + '-button" type="button" role="tab"'
+          + ' aria-selected="' + (t.active ? 'true' : 'false') + '"'
+          + ' aria-label="' + escapeAttr(t.tab_title || '') + '"'
+          + ' title="' + escapeAttr(t.tab_title || '') + '"'
+          + ' data-tab-target="' + escapeAttr(t.id) + '">'
+          + (t.label_html || escapeHtml(t.label || '')) + '</button>';
+      });
+    }
     html += '<span class="tabs-right">'
       + '<label class="checkbox-option cmp-detailed"><input type="checkbox" data-view-detailed> Detailed</label>'
       + '<button type="button" class="theme-toggle" data-theme-toggle'

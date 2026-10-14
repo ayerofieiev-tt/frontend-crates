@@ -6,6 +6,8 @@
   // The tooltip is width:max-content and the widest ones run to the full cap below, so
   // without this they sit flush against the screen edge and read as clipped.
   const margin = 32;
+  let placeScheduled = false;
+  const visibleTooltips = new Set();
   const showDelayMs = 750;
   const hideDelayMs = 750;
   const columnButtons = Array.from(document.querySelectorAll('[data-col-toggle]'));
@@ -166,6 +168,103 @@
       cb.checked = cb.value !== base && inB.has(cb.value);
     });
   }
+  function tooltipCandidate(cell, key) {
+    function find(model) {
+      const candidate = ((model && model.candidates) || []).find(item => item.key === key);
+      if (candidate) return candidate;
+      for (const variant of (model && model.variants) || []) {
+        const nested = find(variant);
+        if (nested) return nested;
+      }
+      return null;
+    }
+    return find(cell && cell.tooltip);
+  }
+
+  function sourceMatches(key, impl) {
+    return typeof key === 'string' && typeof impl === 'string'
+      && (key === impl || key.startsWith(impl + '-') || key.startsWith(impl + '@'));
+  }
+
+  function captureIssue(cell, key) {
+    if (!cell || cell.kind === 'blank' || cell.kind === 'missing') return 'missing';
+    const entry = (cell.cmp || {})[key];
+    const candidateTip = tooltipCandidate(cell, key);
+    const block = candidateTip && candidateTip.block;
+    if (!entry || entry.na === 1) {
+      const reason = String((block && block.unavailable) || '');
+      const code = block && (block.unavailable_code || (block.capture_observation && block.capture_observation.unavailable && block.capture_observation.unavailable.code));
+      if (code === 'missing_capture') return 'missing';
+      if (['unsupported_family', 'unsupported_request_mode'].includes(code)) return 'unsupported';
+      if (code === 'source_unavailable' || /source unavailable|source blocked|historical source/i.test(reason)) return 'blocked';
+      return /\bno(?: [\w.-]+)* parser\b|\bnot (?:yet )?implemented\b|unsupported (?:family|request|mode)|cannot apply/i.test(reason) ? 'unsupported' : 'missing';
+    }
+    if (entry.err === 1 || (block && (block.exception || (block.error && typeof block.error === 'object')))) return 'error';
+    if (block && typeof block.error === 'string') return 'expected';
+    if (entry.leak === 1 || (candidateTip && candidateTip.leak)) return 'leak';
+    return null;
+  }
+
+  function outputStatus(tab, cell, candidate, reference) {
+    const issue = captureIssue(cell, candidate.key);
+    if (issue) return issue;
+    const entry = cell.cmp[candidate.key];
+    const oracleTab = tab.id === 'tab-unified';
+    const compareKey = oracleTab ? 'golden' : reference;
+    const compareEntry = (cell.cmp || {})[compareKey];
+    if (['missing', 'unsupported', 'error', 'expected'].includes(captureIssue(cell, compareKey))) return 'uncompared';
+    if (entry.sig === compareEntry.sig) return 'pass';
+    const intentional = ((cell.tooltip && cell.tooltip.reasons) || []).some(reason => {
+      if (reason.intentional !== true) return false;
+      const forward = sourceMatches(candidate.key, reason.impl) && sourceMatches(compareKey, reason.reference_impl)
+        && entry.sig === reason.candidate_sig && compareEntry.sig === reason.reference_sig;
+      const reverse = sourceMatches(compareKey, reason.impl) && sourceMatches(candidate.key, reason.reference_impl)
+        && compareEntry.sig === reason.candidate_sig && entry.sig === reason.reference_sig;
+      const block = (tooltipCandidate(cell, forward ? candidate.key : compareKey) || {}).block;
+      return (forward || reverse) && block && reason.reason === (block.explanation || block.reason);
+    });
+    if (intentional) return 'documented';
+    return 'diverge';
+  }
+
+  window.__conformanceOutputStatus = outputStatus;
+  const segmentLabels = { pass: 'Matches GOLDEN', documented: 'Documented difference',
+    diverge: 'Disagreement', leak: 'Markup leak', error: 'Parser error', expected: 'Expected error',
+    unsupported: 'Unsupported family or request', missing: 'No captured result', blocked: 'Historical source unavailable',
+    uncompared: 'GOLDEN unavailable' };
+  function renderSegments(cell, keys) {
+    const model = window.__conformanceTooltipModel && window.__conformanceTooltipModel(cell);
+    const cmp = JSON.parse(cell.dataset.cmp || '{}');
+    const data = { kind: 'cell', cmp, tooltip: model };
+    let segments = cell.querySelector('.matrix-segments');
+    if (!segments) {
+      segments = document.createElement('span');
+      segments.className = 'matrix-segments';
+      const marker = cell.querySelector('.cmp-marker');
+      if (marker) marker.replaceWith(segments); else cell.insertBefore(segments, cell.firstChild);
+    }
+    segments.replaceChildren();
+    const labels = keys.map(key => {
+      const status = outputStatus({ id: 'tab-unified' }, data, { key }, 'golden');
+      const segment = document.createElement('i');
+      segment.className = 'matrix-status status-' + status;
+      segment.dataset.capture = key;
+      segment.setAttribute('aria-label', key + ': ' + segmentLabels[status]);
+      segments.appendChild(segment);
+      return key + ': ' + segmentLabels[status];
+    });
+    cell.setAttribute('aria-label', labels.join('; '));
+    const tip = cell._ttip || cell.querySelector('.ttip');
+    if (tip && tip.classList.contains('ttip-built')) {
+      let summary = tip.querySelector('.capture-status-summary');
+      if (!summary) {
+        summary = document.createElement('div');
+        summary.className = 'capture-status-summary';
+        tip.appendChild(summary);
+      }
+      summary.textContent = labels.join('; ');
+    }
+  }
   function applyCtl(panel) {
     const ctl = panelCtl(panel);
     if (!ctl) { return; }
@@ -190,6 +289,7 @@
       let cmp = {};
       const raw = cell.getAttribute('data-cmp');
       if (raw) { try { cmp = JSON.parse(raw); } catch (e) { return; } }
+      if (oracle) renderSegments(cell, shown);
       cell.classList.remove('cmp-eq', 'cmp-leak', 'cmp-na', 'cmp-nobase', 'cmp-donly');
       const marker = cell.querySelector('.cmp-marker .marker-text');
       const fam = cell.getAttribute('data-family') || '';
@@ -287,7 +387,8 @@
       const k = el.dataset.overviewCount;
       el.textContent = String(k === 'todo' ? 0 : (counts[k] || 0));
     });
-    // Column grammar popups (header hover): output columns are one-per-candidate. golden
+    repositionVisibleTooltips();
+    // Column grammar popups (header activation): output columns are one-per-candidate. golden
     // is PINNED (always shown, leftmost); the rest show only when active (Reference +
     // selected compares). Flag the Reference column and order golden -> REF -> the rest,
     // the same rule the cell-popup candidate grid uses.
@@ -771,6 +872,16 @@
     // gutter's worth of usable room on top of the two real gutters.)
     ttip.style.maxWidth = Math.max(240, window.innerWidth - 2 * margin) + 'px';
     const cellRect = cell.getBoundingClientRect();
+    if (cell.dataset.ttipClick === 'pin') {
+      ttip.style.maxWidth = (window.innerWidth * .97) + 'px';
+      ttip.style.maxHeight = (window.innerHeight * .97) + 'px';
+      const rect = ttip.getBoundingClientRect();
+      ttip.style.left = ((window.innerWidth - rect.width) / 2 + window.scrollX) + 'px';
+      ttip.style.top = ((window.innerHeight - rect.height) / 2 + window.scrollY) + 'px';
+      ttip.style.visibility = '';
+      ttip.style.opacity = '';
+      return;
+    }
     // An expanded schema may fit on neither side; scroll it within the larger space.
     const schemaOpen = ttip.querySelector('.case-schema[open]');
     ttip.style.maxHeight = schemaOpen
@@ -803,8 +914,6 @@
     ttip.style.opacity = '';
   }
 
-  let placeScheduled = false;
-  const visibleTooltips = new Set();
   function repositionVisibleTooltips() {
     if (placeScheduled) return;
     placeScheduled = true;
@@ -829,10 +938,6 @@
     }
   }, true);
 
-  // Touch devices have no hover, so the tooltip is opened by TAP and pinned open
-  // (with an ✕ to close) rather than shown on pointerenter. Where hover EXISTS, hover is
-  // the only affordance — clicking never pins, because pinning is modal and one stray
-  // click otherwise disabled hover page-wide. So pinning is a touch-only mechanism now.
   // Only one tooltip is pinned at a time.
   // NEVER gate event REGISTRATION on a media query. `(hover: hover)` and
   // `(any-hover: hover)` are advisory descriptions of a device; they are not a statement
@@ -870,11 +975,9 @@
     pendingPointerType = '';
     pendingPointerTarget = null;
   }, true);
-  // A click that came from a finger or stylus has no hover behind it, so it must open the
-  // popup and pin it. A mouse click must not: hover already showed the popup, and pinning
-  // is modal (see `hoverAllowed`), so a mouse pin would switch hover off page-wide.
-  // Unknown/empty pointerType (synthetic `.click()`, keyboard activation) is treated as
-  // NOT touch, matching the mouse/keyboard contract.
+  // Hosts without explicit activation must not gain modal ownership from a mouse
+  // click: their hover path already opens the tooltip. Touch/pen needs pinning because
+  // those pointers cannot keep a hover tooltip open.
   const consumeClickShouldPin = function (cell) {
     const t = pendingPointerType;
     const target = pendingPointerTarget;
@@ -887,12 +990,22 @@
   let pinnedCell = null;
   function unpinCell(c) { if (c && c._ttipUnpin) { c._ttipUnpin(); } }
   document.addEventListener('click', function (e) {
+    if (e.target.closest('.capture-slots, .comparison-picker')) return;
     if (pinnedCell && !pinnedCell.contains(e.target) && !pinnedCell._ttip.contains(e.target)) { unpinCell(pinnedCell); }
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && pinnedCell && !document.querySelector('dialog[open]')) { event.preventDefault(); unpinCell(pinnedCell); }
   });
 
   function attachTooltip(cell) {
     const ttip = cell.querySelector('.ttip');
     if (!ttip) return;
+    if (cell.hasAttribute('data-ttip-id') && !cell.classList.contains('col-toggle')) {
+      cell.dataset.ttipClick = 'pin';
+      cell.dataset.ttipPortal = '1';
+      cell.tabIndex = 0;
+    }
     cell._ttip = ttip;
     ttip._ttipOwner = cell;
     // cloneNode copies the wired flag; guard so re-wiring a clone is a no-op and
@@ -970,11 +1083,19 @@
       isActive = false;
       cell.classList.remove('ttip-open');
       if (pinnedCell === cell) {
+        if (cell.isConnected) cell.focus({ preventScroll: true });
         pinnedCell = null;
         document.body.classList.remove('ttip-pin-mode');
       }
     }
     cell._ttipUnpin = unpin;
+    cell.addEventListener('keydown', function (event) {
+      if (event.target !== cell || cell.dataset.ttipClick !== 'pin') return;
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        if (ttip.classList.contains('ttip-pinned')) unpin(); else pin();
+      }
+    });
 
     function clearTimers() {
       if (showTimer !== null) {
@@ -1042,10 +1163,6 @@
       clearTimers();
     }
 
-    // Legacy TOUCH ONLY: taps toggle a pinned tooltip, while taps inside its popup links or
-    // close button behave normally. Matrix headers instead opt into click-to-pin; matrix
-    // cells reserve clicks for the output drawer. Legacy hosts keep hover behavior, with
-    // touch pinning as their no-hover path.
     cell.addEventListener('click', function (e) {
       // Consume FIRST, unconditionally. Every early return below still ends this click,
       // so leaving the provenance unconsumed on any of them hands a stale `touch` to the
@@ -1069,17 +1186,17 @@
     // Hover show/hide only where hover exists; on touch it just flickers. A pinned
     // tooltip ignores hover leave so it stays until ✕ / outside tap.
     //
-    // Pinning is also MODAL: while any tooltip is pinned, hover on OTHER cells does
+    // Pinning is also MODAL: while any tooltip is pinned, other hover hosts do
     // nothing. Clicking a cell is a deliberate "keep this one open so I can read it",
     // and hover popups firing over the top of it defeat that — you cannot move the
     // mouse toward the pinned popup without crossing cells that each try to open
-    // their own. Hover resumes when the pin is released (✕, clicking the pinned cell
+    // their own. Hover hosts resume when the pin is released (✕, clicking the pinned cell
     // again, or clicking outside).
     const hoverAllowed = function () { return pinnedCell === null || pinnedCell === cell; };
     const clickOnly = cell.dataset.ttipClick === 'drawer' || cell.dataset.ttipClick === 'pin';
-    // Registered UNCONDITIONALLY — see the `pendingPointerType` note above. If a device has no
-    // hover these simply never fire; if it does, they work regardless of what the media
-    // queries claim. `focusin`/`focusout` additionally give keyboard users the popup.
+    // Media queries cannot establish which pointer events a device delivers, so register
+    // listeners unconditionally. Only non-click-only hosts may activate on hover or focus;
+    // case hosts require explicit activation to avoid constructing popups during navigation.
     const onEnter = function () {
       if (!clickOnly && hoverAllowed() && !ttip.classList.contains('ttip-pinned')) { scheduleShow(); }
     };

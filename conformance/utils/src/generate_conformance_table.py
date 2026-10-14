@@ -2346,7 +2346,9 @@ def _unified_dynamo_label() -> str:
     return _dynamo_v2_producer()["crate_version"]
 
 
-def _unified_capture_failure(record: dict) -> dict:
+def _unified_capture_failure(record: dict | None) -> dict:
+    if record is None:
+        return {"unavailable": "No captured result", "unavailable_code": "missing_capture"}
     record = capture_stimulus.normalize_unavailable(record)
     failure = {key: record[key] for key in ("error", "unavailable") if record.get(key)}
     if "unavailable" in failure and "unavailable_code" in record:
@@ -2490,6 +2492,7 @@ def _load_unified_fixtures(base: Path):
         (family, key)
         for (family, key), input_case in inputs.items()
         if (family, key) not in current_dynamo_cases
+        and family in gen_unified_golden.UNIFIED_FAMILIES
         and (
             (input_case.get("scenario") or key) not in unified_taxonomy.UNIFIED_TAX
             or family in gen_unified_golden.scenario_families(input_case.get("scenario") or key)
@@ -2538,16 +2541,6 @@ def _load_unified_fixtures(base: Path):
                 for ver, vcases in dynamo_by_ver.items()
                 if (vdoc := vcases.get((fam, key))) is not None
             },
-            # Versions whose capture contains this FAMILY at all. A version missing from
-            # here never had a parser for the family, which is a different fact from a
-            # case it simply predates — the capture harness refuses to write an empty
-            # dir for exactly that reason ("no parser here" and "parser emitted nothing"
-            # must not look alike), so the distinction has to be carried to the cell.
-            "dynamo_family_vers": sorted(
-                ver
-                for ver, vcases in dynamo_by_ver.items()
-                if any(f == fam for (f, _k) in vcases)
-            ),
             "dynamo_verdict": None, "vllm_verdict": None, "vllm_note": None,
             "peer_by_ver": {
                 impl: {
@@ -2558,16 +2551,6 @@ def _load_unified_fixtures(base: Path):
                     for ver, docs in peer_by_ver.get(impl, {}).items()
                     if (doc := docs.get((fam, key))) is not None
                 }
-                for impl in _UNIFIED_PEER_SOURCES
-            },
-            # A peer version with no entry for this family has no parser. A version
-            # that captured the family but not this case predates the case instead.
-            "peer_family_vers": {
-                impl: sorted(
-                    ver
-                    for ver, docs in peer_by_ver.get(impl, {}).items()
-                    if any(captured_family == fam for captured_family, _key in docs)
-                )
                 for impl in _UNIFIED_PEER_SOURCES
             },
             "chunks": [
@@ -2742,6 +2725,10 @@ def _unified_tab_model(artifact_root: Path, hrefs: dict) -> dict | None:
         (family, "guided_json_quoted_bare_tool_header_in_answer"): "UNIFIED.35-1"
         for family in families if family != "muse_glimmer"
     })
+    no_native_unified_note = (
+        "No native Dynamo Unified parser is registered for this family; recorded legacy "
+        "batch captures are compared separately against GOLDEN."
+    )
 
     def _unified_na_cell(family: str, scenario: str, group_num: int) -> dict:
         duplicate_of = duplicate_cases.get((family, scenario))
@@ -2810,11 +2797,14 @@ def _unified_tab_model(artifact_root: Path, hrefs: dict) -> dict | None:
                     g_num, _g_sub = _tax(s)
                     cells[s] = _unified_na_cell(f, s, g_num)
                     continue
+                if f not in gen_unified_golden.UNIFIED_FAMILIES:
+                    g_num, _g_sub = _tax(s)
+                    cells[s] = _unified_na_cell(f, s, g_num)
+                    continue
                 authored = gen_unified_golden.build_cases(f)[f"UNIFIED.{s}.{f}"]
                 c = {
                     **authored,
                     "dynamo_missing": True,
-                    "peer_family_vers": {spec["source"]: [] for spec in peer_specs},
                 }
             missing_reason = (
                 f"Missing Unified capture for applicable case {f}/{s}. "
@@ -2832,7 +2822,8 @@ def _unified_tab_model(artifact_root: Path, hrefs: dict) -> dict | None:
                 dyn_chunk_deltas = []
             dyn = _assemble_stream(dyn_chunk_deltas, recorded_assembly=c.get("dynamo"))
             gsig, dsig = _sig(gold), _sig(dyn)
-            dverd = _unified_classify(f, gold, dyn)
+            has_native_unified = f in gen_unified_golden.UNIFIED_FAMILIES
+            dverd = _unified_classify(f, gold, dyn) if has_native_unified else "NA"
             if dynamo_failure:
                 # Missing evidence must stay red even when the oracle expects no events.
                 dsig = gsig ^ 1
@@ -2843,7 +2834,7 @@ def _unified_tab_model(artifact_root: Path, hrefs: dict) -> dict | None:
             for spec in peer_specs:
                 cap = (c.get("peer_by_ver", {}).get(spec["source"], {})
                        .get(spec["version"]))
-                failure = _unified_capture_failure(cap) if cap else {}
+                failure = _unified_capture_failure(cap)
                 chunks = [] if failure else (cap.get("chunks") if cap else None) or []
                 events = (None if cap is None or failure else
                           (_assemble_stream(chunks) if spec["stream"] else
@@ -2858,8 +2849,11 @@ def _unified_tab_model(artifact_root: Path, hrefs: dict) -> dict | None:
                 }
             cmp = {
                 "golden": markers.cmp_entry(gsig),
-                "dynamo": markers.cmp_entry(
-                    dsig, leak=1 if dverd == "LEAK" else 0, err=1 if dynamo_failure else 0,
+                "dynamo": (
+                    markers.cmp_entry(
+                        dsig, leak=1 if dverd == "LEAK" else 0, err=1 if dynamo_failure else 0,
+                    )
+                    if has_native_unified else markers.cmp_entry(0, na=1)
                 ),
             }
             for spec in peer_specs:
@@ -2879,18 +2873,17 @@ def _unified_tab_model(artifact_root: Path, hrefs: dict) -> dict | None:
             # Older Dynamo builds, scored against GOLDEN exactly like the latest one, so a
             # cell that changed between builds shows a real NΔ instead of a styling hint.
             prev_by_ver = c.get("dynamo_by_ver") or {}
-            prev_family_vers = set(c.get("dynamo_family_vers") or [])
             prev_results_by_ver = {}
             for pv in dynamo_history_vers:
+                if not has_native_unified:
+                    cmp[f"dynamo@{pv}"] = markers.cmp_entry(0, na=1)
+                    prev_results_by_ver[pv] = {"chunks": [], "block": {"unavailable": no_native_unified_note}}
+                    continue
                 pdoc = prev_by_ver.get(pv)
                 if pdoc is None:
-                    # Capture predates this case: n/a, not a divergence.
+                    # Absence alone cannot establish parser support or the case's age.
                     cmp[f"dynamo@{pv}"] = markers.cmp_entry(0, na=1)
-                    prev_results_by_ver[pv] = {"chunks": [], "block": {"unavailable": (
-                        f"no {f} parser in Dynamo v2 {pv} — this build could not run the case"
-                        if pv not in prev_family_vers
-                        else f"not captured at {pv} — this case postdates that build"
-                    )}}
+                    prev_results_by_ver[pv] = {"chunks": [], "block": _unified_capture_failure(None)}
                     continue
                 pchunks = pdoc.get("chunks") or []
                 failure = _unified_capture_failure(pdoc)
@@ -2953,7 +2946,8 @@ def _unified_tab_model(artifact_root: Path, hrefs: dict) -> dict | None:
                 "candidates": [
                     {"key": "dynamo", "label": dynamo_label, "impl": "dynamo",
                      "version": dynamo_ver_label, "parse_mode": "unified", "leak": dverd == "LEAK",
-                     "block": (dynamo_failure if dynamo_failure else
+                      "block": ({"unavailable": no_native_unified_note} if not has_native_unified else
+                                dynamo_failure if dynamo_failure else
                                {"events": dyn, "verdict": dverd,
                                 "todo": None,
                                 "explanation": (
@@ -2969,10 +2963,7 @@ def _unified_tab_model(artifact_root: Path, hrefs: dict) -> dict | None:
                     {"key": spec["key"], "label": spec["label"], "impl": spec["impl"],
                      "version": spec["version"], "parse_mode": "batch" if spec["batch"] else "unified",
                      "leak": peer_results[spec["key"]]["verdict"] == "LEAK",
-                     "block": (peer_results[spec["key"]]["failure"] or {"unavailable": (
-                                    f"not captured at {spec['version']}; this case postdates that capture"
-                                    if spec["version"] in c["peer_family_vers"][spec["source"]]
-                                    else f"{spec['label']} has no parser for {f}")}
+                     "block": (peer_results[spec["key"]]["failure"]
                                 if peer_results[spec["key"]]["events"] is None else
                                ({"error": peer_results[spec["key"]]["error"]}
                                 if peer_results[spec["key"]]["error"] else
@@ -2995,7 +2986,9 @@ def _unified_tab_model(artifact_root: Path, hrefs: dict) -> dict | None:
                     for pv in reversed(dynamo_history_vers)
                 ],
                 "baseline": None, "reasons": reasons, "dynamo_notes": [], "refs": [],
-                "leak_note": None, "na_note": None, "duplicate_of": None,
+                "leak_note": None,
+                "na_note": None if has_native_unified else no_native_unified_note,
+                "duplicate_of": None,
             }
             for spec in peer_specs:
                 if spec["batch"]:
@@ -3057,7 +3050,10 @@ def _unified_tab_model(artifact_root: Path, hrefs: dict) -> dict | None:
             'Oracle = <strong>GOLDEN</strong> (authored ordered events). '
             'Compare historical reasoning + batch tool pipelines and existing Unified captures. '
             'Batch final assembly is compared to the same ordered GOLDEN: lost interleaving is a mismatch. '
-            'Batch chunk timing is unavailable. Unsupported requests and unavailable producer sources are explicit.'),
+            'Batch chunk timing is unavailable. Unsupported requests and unavailable producer sources are explicit. '
+            'GPT-OSS peer batch captures are missing for 159 cases across four vLLM versions '
+            '(0.23.0, 0.24.0, 0.25.1, 0.26.0) and SGLang 0.5.14: 795 missing results '
+            'outside the Dynamo v1 backfill. Missing capture evidence does not mean unsupported.'),
         "details_note_html": None,
     }
 

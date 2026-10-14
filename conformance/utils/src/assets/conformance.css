@@ -464,7 +464,7 @@ td.cell, td.parser { cursor: pointer; }
    hover, so clicking a cell visibly shifted every row down. The room for the button
    is reserved horizontally instead, on the head, where a wide popup has space to
    spare and the geometry does not move. */
-.ttip-pinned { max-height: 80vh; overflow: auto; }
+.ttip-pinned { max-height: 97vh; overflow: auto; }
 /* Always reserved, pinned or not, so the two states are the same box. Border-box
    because the head also carries `min-width: 100%`: under content-box that resolves to
    100% PLUS this padding, which overflows the popup and (once pinned) adds the very
@@ -1168,23 +1168,58 @@ body.view-details .case-schema-indicator { display: inline; }
 .capture-slot[data-engine="dynamo"] .capture-slot-engine { color: #66a600; }
 .capture-slot[data-engine="sglang"] .capture-slot-engine { color: #c95c19; }
 .capture-slot[data-engine="vllm"] .capture-slot-engine { color: #2f6fe4; }
-.capture-slot-select { width: min(48%, 250px); min-width: 0; padding: 9px 13px; border: 1px solid #dce1e7; border-radius: 10px; background: #f3f5f7; color: #111827; font: inherit; font-size: 16px; }
+.capture-slot-capture-control { width: min(48%, 250px); min-width: 0; text-align: right; }
+.capture-slot-select { width: 100%; min-width: 0; padding: 9px 13px; border: 1px solid #dce1e7; border-radius: 10px; background: #f3f5f7; color: #111827; font: inherit; font-size: 16px; }
+.capture-slot-none { color: #596575; font-size: 16px; }
 .tab-panel#tab-unified > .cmpctl { display: none; }
 .capture-slots-notice { margin: 0 0 8px; padding: 6px 9px; border: 1px solid #c9a34a; border-radius: 5px; color: #594716; font-size: 12px; }
-.capture-picker { position: fixed; inset: auto; width: min(430px, calc(100vw - 32px)); max-width: calc(100vw - 24px); margin: 0; padding: 22px 24px; border: 1px solid #aeb8c2; border-radius: 12px; background: #fff; color: #111827; box-shadow: 0 8px 28px rgba(0,0,0,.22); }
-.capture-picker::backdrop { background: rgba(10,14,20,.25); }
-.capture-picker h2 { margin: 0 0 20px; font-size: 25px; }
-.capture-picker label { display: grid; grid-template-columns: 82px minmax(0, 1fr); align-items: center; gap: 12px; margin: 14px 0; font-size: 16px; }
-.capture-picker select { width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid #c5ccd4; border-radius: 5px; background: #fff; color: #111827; font: inherit; }
+.comparison-picker { width: 420px; position: fixed; inset: auto; margin: 0; border: 1px solid var(--line-strong, #cfd5dc); border-radius: 12px; background: var(--panel-bg, #fff); color: var(--ink, #111827); box-sizing: border-box; max-width: calc(100vw - 24px); max-height: calc(100vh - 24px); overflow: auto; }
+.comparison-picker::backdrop { background: rgba(10,14,20,.35); }
+.comparison-picker h2 { font-size: 17px; }
+.comparison-picker label { display: flex; gap: 10px; justify-content: space-between; margin: 12px 0; }
+.comparison-picker label[hidden] { display: none; }
+.comparison-picker select { min-width: 0; flex: 1; width: 0; max-width: 65vw; background: var(--panel-alt, #f1f3f6); color: var(--ink, #111827); padding: 5px; }
+.comparison-picker button { padding: 6px 12px; margin-right: 6px; }
 :root[data-theme="dark"] .capture-slot { background: #171b21; border-color: #38414d; }
 :root[data-theme="dark"] .capture-slot-engine-trigger { color: #e8edf3; }
 :root[data-theme="dark"] .capture-slot-engine { color: #a5b0bd; }
+:root[data-theme="dark"] .capture-slot-none { color: #a5b0bd; }
 :root[data-theme="dark"] .capture-slot-select,
-:root[data-theme="dark"] .capture-picker,
-:root[data-theme="dark"] .capture-picker select { background: #1b2128; border-color: #38414d; color: #e8edf3; }
+:root[data-theme="dark"] .comparison-picker,
+:root[data-theme="dark"] .comparison-picker select { background: #1b2128; border-color: #38414d; color: #e8edf3; }
 :root[data-theme="dark"] .capture-slots-notice { color: #e8d29a; border-color: #80692c; }
 @media (max-width: 700px) {
   .capture-slot-controls { grid-template-columns: 1fr; }
   .capture-slot-engine { font-size: 18px; }
-  .capture-slot-select { width: 58%; }
+  .capture-slot-capture-control { width: 58%; }
 }
+
+/* Rounded capture segments retain the #388 status palette within the original table. */
+#tab-unified {
+  --status-pass: #3fa34d; --status-documented: #7fa8e8; --status-diverge: #f0a92a;
+  --status-leak: #e0484b; --status-error: #9b4fd6; --status-expected: #7353ba;
+  --status-unsupported: repeating-linear-gradient(135deg,#e7eaee 0 3px,#f4f5f7 3px 6px);
+  --status-missing: #fff;
+  --status-blocked: #64748b;
+}
+:root[data-theme="dark"] #tab-unified {
+  --status-pass: #3f9e4c; --status-documented: #5b86c9; --status-diverge: #d9952a;
+  --status-leak: #d9474a; --status-error: #a465dc; --status-expected: #8768d0;
+  --status-unsupported: repeating-linear-gradient(135deg,#232a33 0 3px,#1a1f26 3px 6px);
+  --status-missing: #151a20;
+  --status-blocked: #94a3b8;
+}
+#tab-unified .status-pass { background: var(--status-pass); }
+#tab-unified .status-documented { background: var(--status-documented); }
+#tab-unified .status-diverge { background: var(--status-diverge); }
+#tab-unified .status-leak { background: var(--status-leak); }
+#tab-unified .status-error { background: var(--status-error); }
+#tab-unified .status-expected { background: var(--status-expected); }
+#tab-unified .status-unsupported { background: var(--status-unsupported); }
+#tab-unified .status-missing { background: var(--status-missing); }
+#tab-unified .status-blocked { background: var(--status-blocked); }
+#tab-unified .status-uncompared { background: #94a3b8; }
+#tab-unified .matrix-segments { display: inline-flex; gap: 1px; width: 27px; height: 25px; overflow: hidden; border-radius: 4px; vertical-align: middle; box-shadow: inset 0 0 0 1px #aab2bd; }
+#tab-unified .matrix-status { display: block; flex: 1 1 0; min-width: 0; height: 100%; }
+#tab-unified td.cell:has(.matrix-segments) { background: transparent !important; }
+#tab-unified [data-ttip-click="pin"]:not(.ttip-open) { box-shadow: none; }

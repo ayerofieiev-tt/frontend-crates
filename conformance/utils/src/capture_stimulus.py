@@ -107,7 +107,7 @@ def capture_peer_results(
     supports_tools=False,
     unsupported_reason=None,
 ) -> dict:
-    """Bind only native/default peer executions; unsupported requests never run."""
+    """Bind supported peer executions; unsupported requests never run."""
     validate_family_scoped_cases(cases)
     ready, results, bindings = [], {}, {}
     for case in cases:
@@ -294,12 +294,16 @@ def _effective_capture_records(directory: Path, input_aliases: dict) -> dict:
     return captures
 
 
-def validated_current_capture_docs(directory: Path, input_dirs: list[Path]) -> list[dict]:
+def validated_current_capture_docs(
+    directory: Path, input_dirs: list[Path], families: set[str] | None = None,
+) -> list[dict]:
     """Return the effective records checked here so Rust cannot reread a different layer."""
     raw_inputs = {}
     for input_dir in input_dirs:
         for path in sorted(input_dir.glob("*/*.yaml")):
             doc = yaml.safe_load(path.read_bytes())
+            if families is not None and doc["family"] not in families:
+                continue
             for key, record in doc["cases"].items():
                 raw_inputs[(doc["family"], key)] = record
     inputs, input_aliases = canonicalize_unified_inputs(raw_inputs)
@@ -331,22 +335,26 @@ def validated_current_capture_docs(directory: Path, input_dirs: list[Path]) -> l
     return [{"family": family, "cases": records} for family, records in families.items()]
 
 
-def validate_current_capture(directory: Path, input_dirs: list[Path]) -> int:
-    return sum(len(doc["cases"]) for doc in validated_current_capture_docs(directory, input_dirs))
+def validate_current_capture(
+    directory: Path, input_dirs: list[Path], families: set[str] | None = None,
+) -> int:
+    return sum(len(doc["cases"]) for doc in validated_current_capture_docs(directory, input_dirs, families))
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--validate-current", type=Path, required=True)
     parser.add_argument("--inputs", type=Path, nargs="+")
+    parser.add_argument("--families", nargs="+", help="restrict validation to these explicitly applicable families")
     parser.add_argument("--format", choices=("count", "json"), default="count")
     args = parser.parse_args()
     if not args.inputs:
         parser.error("--validate-current requires --inputs")
+    families = set(args.families) if args.families is not None else None
     if args.format == "json":
-        print(json.dumps(validated_current_capture_docs(args.validate_current, args.inputs)))
+        print(json.dumps(validated_current_capture_docs(args.validate_current, args.inputs, families)))
     else:
-        print(validate_current_capture(args.validate_current, args.inputs))
+        print(validate_current_capture(args.validate_current, args.inputs, families))
 
 
 if __name__ == "__main__":

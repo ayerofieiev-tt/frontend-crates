@@ -97,10 +97,10 @@ def _input(text):
             "finish_reason": "stop", "tools": [], "chunks": [{"delta_text": text}, {"delta_text": "‹finish›"}]}
 
 
-def _write(base, directory, record, key="UNIFIED.7-2"):
-    path = base / directory / f"deepseek_v41/{key}.yaml"
+def _write(base, directory, record, key="UNIFIED.7-2", family="deepseek_v41"):
+    path = base / directory / f"{family}/{key}.yaml"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.safe_dump({"family": "deepseek_v41", "cases": {key: record}}))
+    path.write_text(yaml.safe_dump({"family": family, "cases": {key: record}}))
     return path
 
 
@@ -218,6 +218,30 @@ def test_current_capture_guard_rejects_missing_executable_schema(tmp_path):
     _write(tmp_path, "capture", {"capture_input": capture_stimulus.capture_input(current), "assembled": []})
     with pytest.raises(ValueError, match="executable tool schema"):
         capture_stimulus.validate_current_capture(tmp_path / "capture", [tmp_path / "inputs"])
+
+
+def test_current_capture_can_validate_only_native_unified_families(tmp_path):
+    native = _input("same") | {"tools": unified_tools()}
+    split_only = _input("split") | {"tools": unified_tools()}
+    native_record = {"capture_input": capture_stimulus.capture_input(native), "assembled": []}
+    _write(tmp_path, "inputs", native, family="deepseek_v41")
+    _write(tmp_path, "inputs", split_only, family="gpt_oss")
+    _write(tmp_path, "dynamo_v2-0.7.22", native_record, family="deepseek_v41")
+
+    with pytest.raises(ValueError, match="current capture/input sets differ"):
+        capture_stimulus.validate_current_capture(tmp_path / "dynamo_v2-0.7.22", [tmp_path / "inputs"])
+
+    expected = [{"family": "deepseek_v41", "cases": {"UNIFIED.7-2": native_record}}]
+    assert capture_stimulus.validated_current_capture_docs(
+        tmp_path / "dynamo_v2-0.7.22", [tmp_path / "inputs"], {"deepseek_v41"},
+    ) == expected
+    result = subprocess.run(
+        [sys.executable, str(SRC / "capture_stimulus.py"), "--validate-current",
+         str(tmp_path / "dynamo_v2-0.7.22"), "--inputs", str(tmp_path / "inputs"),
+         "--families", "deepseek_v41", "--format", "json"],
+        check=True, capture_output=True, text=True,
+    )
+    assert json.loads(result.stdout) == expected
 
 
 def test_current_version_validates_exact_version_records(tmp_path):

@@ -266,6 +266,14 @@ unified:
     tool_parser: muse_glimmer
     golden_spec: muse_glimmer.yaml
     leak_markers: ["<atem:function_calls>", "</atem:function_calls>", "<atem:invoke", "</atem:invoke>", "<atem:parameter", "</atem:parameter>"]
+  gpt_oss:
+    registry: harmony
+    native: false
+    guided_tool_output: false
+    reasoning_parser: gpt_oss
+    tool_parser: harmony
+    golden_spec: gpt_oss.yaml
+    leak_markers: []
   qwen3:
     registry: qwen3_coder
     native: true

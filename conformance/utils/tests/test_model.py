@@ -38,7 +38,7 @@ from case_variants import leaf_cells
 from schema_cases import ARGUMENT_SECTIONS, schema_fold
 import unified_taxonomy
 from validate_conformance_status import cell_state
-from capture_stimulus import capture_input  # noqa: E402
+from capture_stimulus import batch_final_events, capture_input  # noqa: E402
 import model as model_mod  # noqa: E402
 import generate_conformance_table as table  # noqa: E402
 from dynamo_version import dynamo_v2_label  # noqa: E402
@@ -916,7 +916,7 @@ def test_unified_tab_marks_uncomparable_vllm_cases_na(model_v2):
                 peer = next(candidate for candidate in leaf_cells(row)[scenario]["tooltip"]["candidates"] if candidate["key"] == key)
                 reason = _unavailable_detail(peer["block"])
                 assert (
-                    "not captured at" in reason
+                    "No captured result" in reason
                     or "has no parser" in reason
                     or "parser is not registered for" in reason
                     or reason.startswith("No vLLM Rust Unified parser is registered for ")
@@ -1250,6 +1250,9 @@ def test_shared_reference_cases_keep_older_peer_captures_unmeasured(model_v2: di
         family = row["family"]
         for scenario in scenarios:
             cmp = leaf_cells(row)[scenario]["cmp"]
+            if family == "gpt_oss":
+                assert cmp["dynamo"]["na"] == 1, (family, scenario, "no native unified parser")
+                continue
             assert cmp["dynamo"]["na"] == 0, (family, scenario, "current")
             if family in peer_families:
                 _assert_unmeasured_versions(cmp, older_keys)
@@ -1298,13 +1301,16 @@ def test_glm_type_references_have_typed_current_batch_and_unified_captures(
     events = [{"kind": "tool_call", **call} for call in calls]
     assert blocks["golden"]["events"] == blocks["dynamo"]["events"] == events
     assert cell_state(cell, {"key": "dynamo", "label": "Dynamo"})[0] == "green"
-    families = {"deepseek_v4", "deepseek_v41", "gemma4", "glm47",
+    families = {"deepseek_v4", "deepseek_v41", "gemma4", "glm47", "gpt_oss",
                 "kimi_k2", "kimi_k3", "muse_glimmer", "qwen3"}
     rows = {other["family"]: other for other in unified["rows"] if other.get("family")}
     assert rows.keys() == families
     for family, other in rows.items():
         shared = leaf_cells(other)[scenario]
         assert shared["case_id"] == table.unified_taxonomy.numbered_id(scenario)
+        if family == "gpt_oss":
+            assert shared["cmp"]["dynamo"]["na"] == 1
+            continue
         assert shared["status"] != "na"
         candidates = {candidate["key"]: candidate["block"]
                       for candidate in shared["tooltip"]["candidates"]}
@@ -1322,7 +1328,7 @@ def test_glm_type_references_have_typed_current_batch_and_unified_captures(
                 version = tuple(map(int, candidate["key"].split("@", 1)[1].split(".")))
                 if version < (0, 7, 16):
                     assert "unavailable" in candidate["block"]
-                    assert "not captured at" in _unavailable_detail(candidate["block"])
+                    assert _unavailable_detail(candidate["block"]) == "No captured result"
                     assert "events" not in candidate["block"]
                     state, reason = cell_state(shared, candidate)
                     assert state == "empty"
@@ -1341,6 +1347,64 @@ def test_historical_unified_mismatch_does_not_claim_the_parser_is_missing(model_
     for cell in _iter_cells(tab):
         for candidate in cell["tooltip"]["candidates"]:
             assert "adopt a unified parser" not in (candidate["block"].get("todo") or "")
+
+
+def test_unified_event_reordering_is_a_mismatch():
+    golden = [
+        {"kind": "reasoning", "text": "checking"},
+        {"kind": "tool_call", "name": "get_weather", "arguments": {"city": "Paris"}},
+        {"kind": "text", "text": "It is sunny."},
+    ]
+    batch = [
+        {"kind": "reasoning", "text": "checking"},
+        {"kind": "text", "text": "It is sunny."},
+        {"kind": "tool_call", "name": "get_weather", "arguments": {"city": "Paris"}},
+    ]
+    assert table._unified_classify("gpt_oss", golden, batch) == "ORDER"
+
+
+def test_gpt_oss_uncaptured_peer_batch_results_are_missing_not_unsupported(model_v2):
+    tab = _tab(model_v2, "tab-unified")
+    row = next(row for row in tab["rows"] if row.get("family") == "gpt_oss")
+    keys = {"vllm_python_batch@" + version for version in ("0.23.0", "0.24.0", "0.25.1", "0.26.0")}
+    keys.add("sglang_python_batch@0.5.14")
+    cases = [cell for cell in leaf_cells(row).values() if cell["status"] != "na"]
+    assert len(cases) == 159
+    assert leaf_cells(row)["tool_only"]["case_id"] == "UNIFIED.1-tool_only"
+    missing = []
+    for cell in cases:
+        peers = {candidate["key"]: candidate["block"] for candidate in cell["tooltip"]["candidates"] if candidate["key"] in keys}
+        assert peers.keys() == keys
+        for key, block in peers.items():
+            assert block["unavailable_code"] == "missing_capture"
+            assert block["unavailable"] == "No captured result"
+            assert "no parser" not in block["unavailable"]
+            assert cell["cmp"][key]["na"] == 1
+            missing.append(block)
+    assert len(missing) == 795
+    unsupported = [candidate["block"] for other in tab["rows"] for cell in leaf_cells(other).values()
+                   for candidate in cell.get("tooltip", {}).get("candidates", [])
+                   if "_python_batch@" in candidate["key"] and candidate["block"].get("unavailable_code") == "unsupported_family"]
+    assert unsupported
+    assert all("No registered reasoning + batch tool parser" in block["unavailable"] for block in unsupported)
+
+
+def test_unified_batch_final_tool_call_order_is_a_mismatch():
+    golden = [
+        {"kind": "tool_call", "name": "first", "arguments": {"n": 1}},
+        {"kind": "tool_call", "name": "second", "arguments": {"n": 2}},
+    ]
+    batch_final = {
+        "reasoning_text": "",
+        "normal_text": "",
+        "calls": [
+            {"name": "second", "arguments": {"n": 2}},
+            {"name": "first", "arguments": {"n": 1}},
+        ],
+    }
+
+    events = batch_final_events(batch_final)
+    assert table._unified_classify("gpt_oss", golden, events) == "ORDER"
 
 
 def test_v2_reasoning_uses_current_peers(model_v2):
@@ -1679,7 +1743,7 @@ def test_documented_reasons_bind_source_and_normalized_reference():
     ]
 
 
-def test_merged_documented_pair_survives_producer_and_reference_reversal():
+def test_merged_documented_pair_preserves_outputs_and_reason_when_candidates_reverse():
     batch_key = "dynamo_v1-b-10-0-1"
     stream_key = "dynamo_v2-s-0-7-21"
     peer_key = "vllm_python-b-0-26-0"
@@ -1698,28 +1762,15 @@ def test_merged_documented_pair_survives_producer_and_reference_reversal():
     }
     cell = table._toolcalling_cell_model(case, "batch", "deepseek_v4", "9.b", "batch", "engines", str)
     assert cell["tooltip"]["reasons"], "merged stream documentation was lost because it is outside case.expected"
-    source = UTILS / "src/assets/comparison_layout.js"
-    script = r"""
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const vm = require('node:vm');
-const source = fs.readFileSync(process.argv[1], 'utf8');
-const context = vm.createContext({});
-vm.runInContext(source.slice(source.indexOf('  function tooltipCandidate('),
-  source.indexOf('  function makeHeader(')), context);
-const cell = JSON.parse(process.argv[2]);
-const [batch, stream, peer] = JSON.parse(process.argv[3]);
-for (const [candidate, reference, expected] of [
-  [stream, batch, 'documented'], [batch, stream, 'documented'],
-  [peer, batch, 'diverge'], [peer, stream, 'diverge'],
-  [batch, peer, 'diverge'], [stream, peer, 'diverge'],
-]) {
-  assert.equal(context.outputStatus({id: 'tab-toolcalling-batch'}, cell,
-    {key: candidate}, reference), expected, candidate + ' vs ' + reference);
-}
-"""
-    result = subprocess.run(
-        ["node", "-e", script, str(source), json.dumps(cell), json.dumps([batch_key, stream_key, peer_key])],
-        capture_output=True, text=True,
+    reverse_case = {**case, "__cmp": list(reversed(captures))}
+    reversed_cell = table._toolcalling_cell_model(
+        reverse_case, "batch", "deepseek_v4", "9.b", "batch", "engines", str,
     )
-    assert result.returncode == 0, result.stderr
+    assert reversed_cell["tooltip"]["reasons"] == cell["tooltip"]["reasons"]
+    outputs = {item["key"]: item["block"] for item in cell["tooltip"]["candidates"]}
+    reversed_outputs = {item["key"]: item["block"] for item in reversed_cell["tooltip"]["candidates"]}
+    assert outputs == reversed_outputs == {
+        batch_key: batch,
+        stream_key: stream,
+        peer_key: peer,
+    }

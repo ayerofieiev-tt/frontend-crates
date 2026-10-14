@@ -7,9 +7,6 @@ document:
 changes:
   arg_json_null_anyof:
     case_key: UNIFIED.7-4.anyof
-    stimulus:
-      ref: current
-      semantic_sha256: 1ff66910bee5d7f03a929052c091e2db5981b39d7b26a0daddcf4217ffa535ba
     observation:
       value:
         assembled:
@@ -34,9 +31,6 @@ changes:
         - expected: []
   arg_json_null_const:
     case_key: UNIFIED.7-4.const
-    stimulus:
-      ref: current
-      semantic_sha256: e93691707f61036ba88e5fbbfc408f4eff51474e4e223e8967856d0fc306bb95
     observation:
       value:
         assembled:
@@ -64,9 +58,6 @@ changes:
         - expected: []
   arg_json_null_nullable:
     case_key: UNIFIED.7-4.nullable
-    stimulus:
-      ref: current
-      semantic_sha256: 6e0b46340fc2323941d5e915255edbe74a5eb384c46697d2ca1852db768f42b9
     observation:
       value:
         assembled:
@@ -94,9 +85,6 @@ changes:
         - expected: []
   arg_json_null_oneof:
     case_key: UNIFIED.7-4.oneof
-    stimulus:
-      ref: current
-      semantic_sha256: 940a43efd413faf4a2d1b08b93537f10e57f75a9e738b29edff6d4f748d91062
     observation:
       value:
         assembled:
@@ -121,9 +109,6 @@ changes:
         - expected: []
   arg_string_null_const:
     case_key: UNIFIED.7-5.const
-    stimulus:
-      ref: current
-      semantic_sha256: 598f958cc2ed7ed06fadb5a0b14f84c6cc88585ef29cea2ff222cb57cb492caa
     observation:
       value:
         assembled:
@@ -148,9 +133,6 @@ changes:
         - expected: []
   arg_string_null_enum:
     case_key: UNIFIED.7-5.enum
-    stimulus:
-      ref: current
-      semantic_sha256: ef784c4dcad52e5d9d39ab5928018eda86a1c14310c6537dd353f5ba2345ff34
     observation:
       value:
         assembled:
@@ -175,9 +157,6 @@ changes:
         - expected: []
   arg_string_null_ref:
     case_key: UNIFIED.7-5.ref
-    stimulus:
-      ref: current
-      semantic_sha256: b0076cb4c0c09c954a093532208d7d101f28d314a835defa034449bc8fa03428
     observation:
       value:
         assembled:
@@ -205,9 +184,6 @@ changes:
         - expected: []
   arg_string_null_sibling_anyof:
     case_key: UNIFIED.7-5.sibling_anyof
-    stimulus:
-      ref: current
-      semantic_sha256: 8b572cfe08f734fb59fcda07b9423ce40761ae6b42aa23a3aa5634c8bcb3f02d
     observation:
       value:
         assembled:
@@ -232,9 +208,6 @@ changes:
         - expected: []
   arg_string_null_sibling_oneof:
     case_key: UNIFIED.7-5.sibling_oneof
-    stimulus:
-      ref: current
-      semantic_sha256: 0d44dd040d10d51108dddb8e31201c9b30af3014e5b6b0166bf321d642e867bf
     observation:
       value:
         assembled:
@@ -259,9 +232,6 @@ changes:
         - expected: []
   arg_string_null_union:
     case_key: UNIFIED.7-5.union
-    stimulus:
-      ref: current
-      semantic_sha256: 1f5b4eb699db6573f9b1a7b8df8e0003c913e891b7ba3153558151749ab0021f
     observation:
       value:
         assembled:
@@ -286,9 +256,6 @@ changes:
         - expected: []
   arg_string_null_untyped_branch:
     case_key: UNIFIED.7-5.untyped_branch
-    stimulus:
-      ref: current
-      semantic_sha256: 2a4121a53c8a98ae45bb512d354b7b60382ffeec1dbe1d6f5ade910c73f1f353
     observation:
       value:
         assembled:
@@ -313,9 +280,6 @@ changes:
         - expected: []
   deepseek_v41_mixed_control_text_in_string:
     case_key: UNIFIED.7-3
-    stimulus:
-      ref: current
-      semantic_sha256: 2265cf929ee180d55608c508d42a9f2da9e60da2a50ae08773f50ec34c687366
     observation:
       value:
         assembled:
@@ -380,9 +344,6 @@ changes:
         - expected: []
   glm_ref_encoded_targets:
     case_key: UNIFIED.7-11
-    stimulus:
-      ref: current
-      semantic_sha256: 7befa34f3bd750f758274657afc9e33e3ddc457acf957cb02fc35e6547b15e6f
     observation:
       value:
         assembled:
@@ -439,9 +400,6 @@ changes:
         - expected: []
   glm_ref_json_looking_strings:
     case_key: UNIFIED.7-12
-    stimulus:
-      ref: current
-      semantic_sha256: 56885b2bd85feded1a4fca5791c429ab008192638ac9f585a18e48f4dea7b5c3
     observation:
       value:
         assembled:
@@ -509,9 +467,6 @@ changes:
         - expected: []
   glm_ref_object:
     case_key: UNIFIED.7-9
-    stimulus:
-      ref: current
-      semantic_sha256: f3bb547f787aff63c114d5307edf61aa5d82aabf0c8f584a7d4524c605d86fec
     observation:
       value:
         assembled:
@@ -546,9 +501,6 @@ changes:
         - expected: []
   glm_ref_scalar_types:
     case_key: UNIFIED.7-13
-    stimulus:
-      ref: current
-      semantic_sha256: 2c920ee66326ac80f74ebd8b52e8bde5cb686dd99d69b0a85aca9a8d280da14e
     observation:
       value:
         assembled:
@@ -613,9 +565,6 @@ changes:
         - expected: []
   guided_quoted_reasoning_closer_named:
     case_key: UNIFIED.34-8
-    stimulus:
-      ref: current
-      semantic_sha256: c975b0b50c52fdd0e1ef7fc4ae0f7075a95665762fd8baf9b16e2dc41df64652
     observation:
       value:
         assembled:
@@ -638,9 +587,6 @@ changes:
         - expected: []
   guided_quoted_reasoning_closer_required:
     case_key: UNIFIED.34-9
-    stimulus:
-      ref: current
-      semantic_sha256: 92392160ba79eda5d0af431fb0e298efd09a29d658d31af6a5f36c24632f5129
     observation:
       value:
         assembled:
@@ -663,9 +609,6 @@ changes:
         - expected: []
   guided_response_quoted_control_braces_named:
     case_key: UNIFIED.35-3
-    stimulus:
-      ref: current
-      semantic_sha256: 286e85f73135a80bcd8d4db01fc1936f8fd4d5fd733d68516dfe288ba2fe5ada
     observation:
       value:
         assembled:
@@ -680,9 +623,6 @@ changes:
         - expected: []
   guided_response_quoted_control_braces_required:
     case_key: UNIFIED.35-4
-    stimulus:
-      ref: current
-      semantic_sha256: fdb2357e67bdadd97e4c4fbef96ba82edec429d097c5b51c6015759f65e36db7
     observation:
       value:
         assembled:
@@ -697,9 +637,6 @@ changes:
         - expected: []
   local_schema_id_preserves_type:
     case_key: UNIFIED.7-16
-    stimulus:
-      ref: current
-      semantic_sha256: 01e80d783df0a816c0fcd4d543a464a2023097be0c86d0c31d81136900504a50
     observation:
       value:
         assembled:
@@ -731,9 +668,6 @@ changes:
         - expected: []
   malformed_json_then_two_valid_calls:
     case_key: UNIFIED.5-4
-    stimulus:
-      ref: current
-      semantic_sha256: c630a1238b2c6452f7c475c9e3e2e1fde464a2525db8f5ad1869440c9e34d1d9
     observation:
       value:
         assembled:
@@ -763,9 +697,6 @@ changes:
         - expected: []
   native_quoted_control_in_reasoning:
     case_key: UNIFIED.40-5
-    stimulus:
-      ref: current
-      semantic_sha256: 18dfbc13e6ea1cd3555406f8da79e056f9a762307dd9db14ba58ed632e117231
     observation:
       value:
         assembled:
@@ -780,9 +711,6 @@ changes:
         - expected: []
   native_quoted_control_in_response:
     case_key: UNIFIED.8-6
-    stimulus:
-      ref: current
-      semantic_sha256: 16b96b5e7e55d3c91d8a89585d6fe816904a3652c26191ee2c3a8e96143ce361
     observation:
       value:
         assembled:
@@ -797,9 +725,6 @@ changes:
         - expected: []
   native_quoted_control_then_call:
     case_key: UNIFIED.8-8
-    stimulus:
-      ref: current
-      semantic_sha256: 01a1a649e65789c9799e32c8aaf04a3c9424179fb6590700fa28042e04b43dfa
     observation:
       value:
         assembled:
@@ -841,9 +766,6 @@ changes:
         - expected: []
   native_quoted_incomplete_header:
     case_key: UNIFIED.8-10
-    stimulus:
-      ref: current
-      semantic_sha256: 86f450d735df777c06ffedf101b8114ce1020d9c4b8b2838366581ab87370fb6
     observation:
       value:
         assembled:
@@ -874,9 +796,6 @@ changes:
         - expected: []
   native_single_quote_contraction_reasoning:
     case_key: UNIFIED.40-6
-    stimulus:
-      ref: current
-      semantic_sha256: 82bab31940c9db4cf83a712e31651565d68619bb8373b83e98caa4dce49a7a8a
     observation:
       value:
         assembled:
@@ -891,9 +810,6 @@ changes:
         - expected: []
   native_single_quote_contraction_response:
     case_key: UNIFIED.8-11
-    stimulus:
-      ref: current
-      semantic_sha256: 7373efc5089a145deed48da5bdd5db9ed31aff4081263066bfab7e804cff0022
     observation:
       value:
         assembled:
@@ -908,9 +824,6 @@ changes:
         - expected: []
   native_single_quoted_word_control:
     case_key: UNIFIED.8-7
-    stimulus:
-      ref: current
-      semantic_sha256: f3155d7b41c6e17e2d7255aef81ca5625a8f81a6334756236720d4f28ee84b35
     observation:
       value:
         assembled:
@@ -925,9 +838,6 @@ changes:
         - expected: []
   native_unmatched_quote_then_call:
     case_key: UNIFIED.8-9
-    stimulus:
-      ref: current
-      semantic_sha256: 920fda132599b6c72d0f776b2f21d8b7879ed204ac1f1a97cb565ae4526ae8a8
     observation:
       value:
         assembled:
@@ -967,9 +877,6 @@ changes:
         - expected: []
   nullable_reference_alias_literals:
     case_key: UNIFIED.7-15
-    stimulus:
-      ref: current
-      semantic_sha256: 14a1b7e4978d5c3de8a4c4a4bd5b308649cfcf9a37b72bfe4c3dd22046373d0b
     observation:
       value:
         assembled:
@@ -1015,9 +922,6 @@ changes:
         - expected: []
   qwen_nullable_string_null:
     case_key: UNIFIED.7-4
-    stimulus:
-      ref: current
-      semantic_sha256: 7b4d4e29494c02532b5cf4686df91a84150679b05afaa22aae58d93e591c617f
     observation:
       value:
         assembled:
@@ -1042,9 +946,6 @@ changes:
         - expected: []
   qwen_string_null:
     case_key: UNIFIED.7-5
-    stimulus:
-      ref: current
-      semantic_sha256: 9732b6945959ed7895a88e2344b2420012d97b427299eeb61e2f064010d9c7af
     observation:
       value:
         assembled:
@@ -1072,9 +973,6 @@ changes:
         - expected: []
   unused_reference_graph_parameter_types:
     case_key: UNIFIED.7-14
-    stimulus:
-      ref: current
-      semantic_sha256: ba68f831b61c6520cb269382b1862ff248c7d483bd5162aa4a9f5c94818a0191
     observation:
       value:
         assembled:
@@ -1957,210 +1855,6 @@ metadata_changes:
       job_sha256: 94134bdf844f10258277f6d45a4bcf35b610e0a70047579085237711956d4963
   unused_reference_graph_parameter_types: {}
 document_overrides:
-  arg_json_null_anyof:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  arg_json_null_const:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  arg_json_null_nullable:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  arg_json_null_oneof:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  arg_marker_in_string:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.26.0
-      capture_origin: null
-      inherited_from: 0.26.0
-  arg_string_null_const:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  arg_string_null_enum:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  arg_string_null_ref:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  arg_string_null_sibling_anyof:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  arg_string_null_sibling_oneof:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  arg_string_null_union:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  arg_string_null_untyped_branch:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  deepseek_v41_mixed_control_text_in_string:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  glm_ref_encoded_targets:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  glm_ref_json_looking_strings:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  glm_ref_object:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  glm_ref_scalar_types:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  guided_quoted_reasoning_closer_named:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  guided_quoted_reasoning_closer_required:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  guided_response_quoted_control_braces_named:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  guided_response_quoted_control_braces_required:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  local_schema_id_preserves_type:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  malformed_json_then_two_valid_calls:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  native_quoted_control_in_reasoning:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  native_quoted_control_in_response:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  native_quoted_control_then_call:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  native_quoted_incomplete_header:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  native_single_quote_contraction_reasoning:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  native_single_quote_contraction_response:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  native_single_quoted_word_control:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  native_unmatched_quote_then_call:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  nullable_reference_alias_literals:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  qwen_nullable_string_null:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  qwen_string_null:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
   schema_const_array_allof:
     capture_provenance:
       captured_with:
@@ -2840,12 +2534,6 @@ document_overrides:
       capture_origin: null
       inherited_from: null
   schema_union_oneof_object_typed:
-    capture_provenance:
-      captured_with:
-        vllm_python: 0.27.1
-      capture_origin: null
-      inherited_from: null
-  unused_reference_graph_parameter_types:
     capture_provenance:
       captured_with:
         vllm_python: 0.27.1

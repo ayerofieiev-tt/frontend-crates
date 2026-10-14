@@ -2159,6 +2159,30 @@ def _sync_current_corpus(
     input_roots = _shared_corpus_roots(loose_root, "inputs")
     golden_roots = _shared_corpus_roots(loose_root, "golden")
 
+    registered_families = set(
+        (yaml.safe_load((Path(__file__).resolve().parent / "parser_families.yaml").read_text()) or {})
+        .get("unified", {})
+    )
+    known_families = set(store.families)
+    for root in (*input_roots, *golden_roots):
+        unknown = sorted(
+            path.name for path in root.iterdir() if path.is_dir() and path.name not in known_families
+        )
+        unregistered = sorted(set(unknown) - registered_families)
+        if unregistered:
+            raise ValueError(f"current Unified corpus has unregistered families under {root}: {unregistered}")
+        for family_name in unknown:
+            family_path = store.root / "families" / family_name / FAMILY_DOCUMENT_NAME
+            store.families[family_name] = Family(
+                family_name,
+                {
+                    "input_document": {"family": family_name, "mode": "unified", "model_label": family_name},
+                    "golden_document": {"family": family_name, "mode": "unified", "captured_with": {"golden": "v1"}},
+                    "cases": {},
+                },
+                family_path,
+            )
+
     family_documents = {}
     for family_name in sorted(store.families):
         input_paths = [

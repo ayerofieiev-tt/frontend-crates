@@ -194,6 +194,7 @@
   }
   // Expose so conformance.js (or tests) can force-build a specific cell if needed.
   window.__buildTooltip = buildTooltipInto;
+  window.__conformanceTooltipModel = cell => _ttipModels[cell.getAttribute("data-ttip-id")];
   window.__registerConformanceTooltip = registerTooltip;
   window.__conformanceCaseTooltip = columnGrammarModel;
 
@@ -204,6 +205,7 @@
     // element types that happen to have one today. Click-only matrix cells either open the
     // output drawer or pin their tooltip, so pointer and focus must not build them.
     var td = t && t.closest ? t.closest('[data-ttip-id]') : null;
+    if (td && td.closest('#tab-unified') && e.type !== 'click') { return; }
     if (td && (td.dataset.ttipClick === 'drawer'
       || (td.dataset.ttipClick === 'pin' && e.type !== 'click'))) { return; }
     if (td) { buildTooltipInto(td); }

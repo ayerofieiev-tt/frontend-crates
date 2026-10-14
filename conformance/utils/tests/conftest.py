@@ -27,17 +27,21 @@ def rendered_page(tmp_path_factory) -> Path:
 
 
 @pytest.fixture(scope="session")
-def reference_page(rendered_page: Path, tmp_path_factory) -> Path:
+def reference_page(legacy_rendered_page: Path, tmp_path_factory) -> Path:
     """Exercise the retained reference renderer without the comparison projection.
 
     The comparison browser tests use rendered_page. Reference popup tests keep
     their original controls/orientation so renderer content can be compared independently.
     """
-    page = rendered_page.read_text()
+    page = legacy_rendered_page.read_text()
     layout = (UTILS / "src/assets/comparison_layout.js").read_text()
     script = "<script>\n" + layout + "\n</script>"
     assert page.count(script) == 1
     page = page.replace(script, "")
+    # The reference harness retains the original controls alongside archived tabs.
+    hidden_controls = ".tab-panel#tab-unified > .cmpctl { display: none; }"
+    assert page.count(hidden_controls) == 1
+    page = page.replace(hidden_controls, "")
     out = tmp_path_factory.mktemp("reference-render") / "CONFORMANCE_reference.html"
     out.write_text(page)
     return out

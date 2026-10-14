@@ -92,7 +92,7 @@ VLLM_UNIFIED_PIPELINES = {'deepseek_v4': ('deepseek_v4', 'deepseek_v4'), 'deepse
 
 SGLANG_UNIFIED_PIPELINES = {'deepseek_v4': ('deepseek-v4', 'deepseekv4'), 'deepseek_v41': ('deepseek-v41', 'deepseekv41'), 'kimi_k3': ('kimi_k3', 'kimi_k3'), 'gemma4': ('gemma4', 'gemma4'), 'qwen3': ('qwen3', 'qwen3_coder'), 'glm47': ('glm45', 'glm47'), 'kimi_k2': ('kimi_k2', 'kimi_k2'), 'muse_glimmer': ('muse', 'muse')}
 
-DYNAMO_UNIFIED_PIPELINES = {"qwen3": ("qwen3", "qwen3_coder"), "kimi_k2": ("kimi_k25", "kimi_k2"), "glm47": ("glm45", "glm47"), "gemma4": ("gemma4", "gemma4"), "deepseek_v4": ("deepseek_v4", "deepseek_v4"), "deepseek_v41": ("deepseek_v4", "deepseek_v4"), "kimi_k3": ("kimi_k3", "kimi_k3")}
+DYNAMO_UNIFIED_PIPELINES = {"qwen3": ("qwen3", "qwen3_coder"), "kimi_k2": ("kimi_k25", "kimi_k2"), "glm47": ("glm45", "glm47"), "gemma4": ("gemma4", "gemma4"), "deepseek_v4": ("deepseek_v4", "deepseek_v4"), "deepseek_v41": ("deepseek_v4", "deepseek_v4"), "kimi_k3": ("kimi_k3", "kimi_k3"), "gpt_oss": ("gpt_oss", "harmony")}
 
 def batch_capture_label(implementation: str, version: str) -> str:
     source = next(spec for spec in IMPL_SPECS if spec.key == BATCH_SOURCE_IMPL[implementation])

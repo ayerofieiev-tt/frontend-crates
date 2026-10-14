@@ -45,10 +45,11 @@ def test_default_capture_identity_is_separate_from_engine_grouping():
     validator = _load_validator()
     model = _model({})
     tab = model["tabs"][0]
-    expected = []
-    for implementation, version in validator.BATCH_DEFAULT_VERSIONS.items():
-        key = f"{implementation}@{version}"
-        expected.append(key)
+    expected = list(validator.UNIFIED_COMPARISON_DEFAULTS)
+    for key in expected:
+        if key is None:
+            continue
+        implementation, version = key.rsplit("@", 1)
         tab["candidates"].append({"key": key, "impl": implementation.split("_", 1)[0], "version": version, "parse_mode": "batch", "label": key, "default_bucket": "C"})
     status = validator.build_status(model, [tab], ["qwen3"], Path("report.html"))
     assert status["comparison_defaults"]["tab-unified"] == expected

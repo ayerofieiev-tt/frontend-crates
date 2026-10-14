@@ -8,8 +8,9 @@
   const panel = document.getElementById('tab-unified');
   if (!tab || !panel) return;
 
-  const engines = ['dynamo', 'sglang', 'vllm'];
+  const engines = tab.comparison_slot_engines || ['dynamo', 'sglang', 'vllm'];
   const engineNames = { dynamo: 'Dynamo', sglang: 'SGLang', vllm: 'vLLM' };
+  const engineLetters = { dynamo: 'D', sglang: 'S', vllm: 'V' };
   const candidates = (tab.candidates || []).filter(item => item && item.key && item.impl !== 'golden');
   const byKey = new Map(candidates.map(item => [item.key, item]));
   const engineOf = item => {
@@ -22,11 +23,12 @@
   }));
   const available = candidates.filter(item => hasCapture(item.key));
   const byEngine = new Map(engines.map(key => [key, candidates.filter(item => engineOf(item) === key)]));
-  const preferred = engines.map(engine => {
+  const preferredByEngine = engines.map(engine => {
     const items = byEngine.get(engine);
     return (items.find(item => item.preferred_default)
       || items.find(item => item.default_bucket === 'A') || items[0] || {}).key || null;
   });
+  const preferred = tab.comparison_defaults || preferredByEngine;
   const params = new URLSearchParams(window.__CONFORMANCE_INITIAL_SEARCH || window.location.search);
   const slotsParam = 'slots_' + tab.id;
   const legacyBaseParam = 'base_' + tab.id;
@@ -39,13 +41,19 @@
   const initial = requested === null ? preferred : requested;
   const overflow = initial.filter(Boolean).length > 3;
   const slots = [null, null, null];
+  const slotEngines = [...engines];
   const seen = new Set();
   initial.slice(0, 3).forEach((key, index) => {
     if (key && byKey.has(key) && !seen.has(key)) {
       slots[index] = key;
+      slotEngines[index] = engineOf(byKey.get(key));
       seen.add(key);
     }
   });
+  if (!slots[0]) {
+    const requiredPrimary = preferred[0];
+    if (requiredPrimary && byKey.has(requiredPrimary)) slots[0] = requiredPrimary;
+  }
 
   const selector = document.createElement('section');
   selector.className = 'capture-slots';
@@ -59,21 +67,41 @@
   const controls = document.createElement('div');
   controls.className = 'capture-slot-controls';
   const escapeHtml = value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const shortCaptureLabel = (capture, engine) => {
+    const label = String(capture && (capture.label || capture.version || capture.key) || 'None');
+    const prefix = { dynamo: /^Dynamo\s+/, sglang: /^SGLang(?: Python)?\s+/, vllm: /^vLLM(?: Python)?\s+/ }[engine];
+    return label.replace(prefix, '');
+  };
+  function candidateOptions(engine, slot, selectedKey, allowNone = slot !== 0) {
+    return (allowNone ? '<option value="">None</option>' : '') + (byEngine.get(engine) || []).map(item => {
+      const duplicate = slots.some((key, index) => index !== slot && key === item.key);
+      const missing = !hasCapture(item.key);
+      const label = shortCaptureLabel(item, engine);
+      return '<option value="' + item.key.replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '"'
+        + (selectedKey === item.key ? ' selected' : '') + (duplicate || missing ? ' disabled' : '') + '>'
+        + label.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        + (duplicate ? ' — selected in another slot' : missing ? ' — no captured results' : '') + '</option>';
+    }).join('');
+  }
   controls.innerHTML = slots.map((key, index) => {
     const capture = byKey.get(key);
-    const engine = capture ? engineOf(capture) : engines[index];
-    const version = capture ? capture.label || capture.version || capture.key : 'None';
+    const engine = slotEngines[index];
+    const version = capture ? shortCaptureLabel(capture, engine) : 'None';
+    const fullLabel = capture ? capture.label || capture.version || capture.key : 'None';
     return '<div class="capture-slot" data-engine="' + engine + '">'
-      + '<span class="capture-slot-engine" data-slot-engine="' + index + '">' + engineNames[engine] + '</span>'
-      + '<button type="button" class="capture-slot-trigger" data-slot-picker="' + index + '"'
-      + ' aria-label="Comparison slot ' + (index + 1) + ': ' + engineNames[engine] + ', ' + escapeHtml(version) + '">'
-      + '<span data-slot-label="' + index + '">' + escapeHtml(version) + '</span>'
-      + '<span aria-hidden="true">▾</span></button></div>';
+      + '<button type="button" class="capture-slot-engine-trigger" data-slot-open="' + index + '"'
+      + ' aria-haspopup="dialog" aria-expanded="false" aria-controls="unified-capture-picker"'
+      + ' aria-label="Edit comparison slot ' + (index + 1) + ': ' + engineNames[engine] + '">'
+      + '<span class="capture-slot-badge" data-slot-badge="' + index + '" aria-hidden="true">' + engineLetters[engine] + '</span>'
+      + '<span class="capture-slot-engine" data-slot-engine="' + index + '">' + engineNames[engine] + '</span></button>'
+      + '<select class="capture-slot-select" data-slot-capture="' + index + '" aria-label="Choose capture for comparison slot '
+      + (index + 1) + ': ' + engineNames[engine] + ', ' + escapeHtml(fullLabel) + '">'
+      + candidateOptions(engine, index, key, index !== 0) + '</select></div>';
   }).join('');
   selector.appendChild(controls);
   panel.insertBefore(selector, panel.querySelector('.cmpctl'));
 
-  const state = { slots };
+  const state = { slots, engines: slotEngines };
   const selection = { keys: state.slots.filter(Boolean), reference: null };
   panel._comparisonSelection = selection;
   function persist() {
@@ -86,19 +114,25 @@
     window.history.replaceState(null, '', url.toString());
   }
   function update() {
+    if (!state.slots[0]) {
+      const requiredPrimary = (byEngine.get(state.engines[0]) || []).find(item => hasCapture(item.key));
+      state.slots[0] = requiredPrimary ? requiredPrimary.key : preferred[0];
+    }
     selection.keys = state.slots.filter(Boolean);
     window.__applyConformanceSelection(panel, selection.keys, null);
     state.slots.forEach((key, index) => {
       const capture = byKey.get(key);
-      const label = capture ? capture.label || capture.version || capture.key : 'None';
-      const engine = capture ? engineOf(capture) : engines[index];
+      const engine = state.engines[index];
+      const fullLabel = capture ? capture.label || capture.version || capture.key : 'None';
       const slot = controls.querySelector('.capture-slot:nth-child(' + (index + 1) + ')');
       slot.dataset.engine = engine;
-      slot.querySelector('[data-slot-engine]').textContent = capture ? engineNames[engine] : 'Slot ' + (index + 1);
-      const button = controls.querySelector('[data-slot-picker="' + index + '"]');
-      button.querySelector('[data-slot-label]').textContent = label;
-      button.setAttribute('aria-label', 'Comparison slot ' + (index + 1) + ': '
-        + (capture ? engineNames[engine] : 'None') + ', ' + label);
+      slot.querySelector('[data-slot-engine]').textContent = engineNames[engine];
+      slot.querySelector('[data-slot-badge]').textContent = engineLetters[engine];
+      const captureSelect = slot.querySelector('[data-slot-capture]');
+      captureSelect.innerHTML = candidateOptions(engine, index, key, index !== 0);
+      captureSelect.value = key || '';
+      captureSelect.setAttribute('aria-label', 'Choose capture for comparison slot ' + (index + 1) + ': '
+        + engineNames[engine] + ', ' + fullLabel);
     });
     persist();
   }
@@ -106,6 +140,7 @@
 
   const picker = document.createElement('dialog');
   picker.className = 'capture-picker';
+  picker.id = 'unified-capture-picker';
   picker.setAttribute('aria-label', 'Choose engine and capture');
   document.body.appendChild(picker);
   let activeSlot = 0;
@@ -121,64 +156,62 @@
     picker.style.left = Math.max(margin, Math.min(left, window.innerWidth - rect.width - margin)) + 'px';
     picker.style.top = Math.max(margin, Math.min(anchor.top, window.innerHeight - rect.height - margin)) + 'px';
   }
-  function candidateOptions(engine) {
-    return (byEngine.get(engine) || []).map(item => {
-      const duplicate = state.slots.some((key, index) => index !== activeSlot && key === item.key);
-      const missing = !hasCapture(item.key);
-      const label = item.label || item.version || item.key;
-      return '<option value="' + item.key.replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '"'
-        + (state.slots[activeSlot] === item.key ? ' selected' : '') + (duplicate || missing ? ' disabled' : '') + '>'
-        + label.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        + (duplicate ? ' — selected in another slot' : missing ? ' — no captured results' : '') + '</option>';
-    }).join('');
-  }
   function openPicker(slot, trigger) {
     activeSlot = slot;
     activeTrigger = trigger;
-    const selected = byKey.get(state.slots[slot]);
-    const engine = selected ? engineOf(selected) : engines[slot];
-    picker.innerHTML = '<form method="dialog"><h2>Comparison slot ' + (slot + 1) + '</h2>'
+    const engine = state.engines[slot];
+    picker.innerHTML = '<h2>Comparison slot ' + (slot + 1) + '</h2>'
       + '<label>Engine <select data-picker-engine>' + engines.map(key => '<option value="' + key + '"'
         + (key === engine ? ' selected' : '') + '>' + engineNames[key] + '</option>').join('')
-      + '<option value="none">None</option></select></label>'
-      + '<label>Capture <select data-picker-capture>' + candidateOptions(engine) + '</select></label>'
-      + '<button type="button" data-picker-close>Done</button></form>';
+      + '</select></label>'
+      + '<label>Capture <select data-picker-capture>' + candidateOptions(engine, slot, state.slots[slot], slot !== 0) + '</select></label>';
+    picker.querySelector('[data-picker-capture]').value = state.slots[slot] || '';
+    trigger.setAttribute('aria-expanded', 'true');
     picker.showModal();
     window.requestAnimationFrame(positionPicker);
   }
   controls.addEventListener('click', event => {
-    const trigger = event.target.closest('[data-slot-picker]');
-    if (trigger) openPicker(Number(trigger.dataset.slotPicker), trigger);
+    const trigger = event.target.closest('[data-slot-open]');
+    if (trigger) openPicker(Number(trigger.dataset.slotOpen), trigger);
+  });
+  controls.addEventListener('change', event => {
+    if (!event.target.matches('[data-slot-capture]')) return;
+    const slot = Number(event.target.dataset.slotCapture);
+    const key = event.target.value || null;
+    if (key && state.slots.some((value, index) => index !== slot && value === key)) return;
+    state.slots[slot] = key;
+    update();
   });
   picker.addEventListener('click', event => {
-    if (event.target === picker || event.target.closest('[data-picker-close]')) picker.close();
+    if (event.target === picker) picker.close();
   });
   picker.addEventListener('close', () => {
-    if (activeTrigger && activeTrigger.isConnected) activeTrigger.focus({ preventScroll: true });
+    if (activeTrigger && activeTrigger.isConnected) {
+      activeTrigger.setAttribute('aria-expanded', 'false');
+      activeTrigger.focus({ preventScroll: true });
+    }
   });
   picker.addEventListener('change', event => {
     if (event.target.matches('[data-picker-engine]')) {
       const engine = event.target.value;
-      if (engine === 'none') {
-        state.slots[activeSlot] = null;
-        update();
-        event.target.value = 'none';
-        picker.querySelector('[data-picker-capture]').disabled = true;
-        return;
-      }
       const options = (byEngine.get(engine) || []).filter(item =>
         hasCapture(item.key) && !state.slots.some((key, index) => index !== activeSlot && key === item.key));
-      if (!options.length) return;
+      if (activeSlot === 0 && !options.length) {
+        event.target.value = state.engines[activeSlot];
+        return;
+      }
       const current = byKey.get(state.slots[activeSlot]);
-      const selected = options.find(item => current && item.key === current.key) || options[0];
-      picker.querySelector('[data-picker-capture]').innerHTML = candidateOptions(engine);
-      picker.querySelector('[data-picker-capture]').value = selected.key;
-      picker.querySelector('[data-picker-capture]').disabled = false;
-      state.slots[activeSlot] = selected.key;
+      const selected = current && engineOf(current) === engine
+        ? current : current ? options[0] || null : null;
+      state.engines[activeSlot] = engine;
+      state.slots[activeSlot] = selected && selected.key || null;
+      const captureSelect = picker.querySelector('[data-picker-capture]');
+      captureSelect.innerHTML = candidateOptions(engine, activeSlot, state.slots[activeSlot]);
+      captureSelect.value = state.slots[activeSlot] || '';
       update();
     } else if (event.target.matches('[data-picker-capture]')) {
-      const key = event.target.value;
-      if (state.slots.some((value, index) => index !== activeSlot && value === key)) return;
+      const key = event.target.value || null;
+      if (key && state.slots.some((value, index) => index !== activeSlot && value === key)) return;
       state.slots[activeSlot] = key;
       update();
     }

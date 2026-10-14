@@ -1150,30 +1150,41 @@ body.view-details .case-schema-indicator { display: inline; }
 :root[data-theme="dark"] .case-schema-indicator { color: #94a3b8; }
 
 
-/* The capture picker is the only redesigned part of the Unified report. */
-.capture-slots { margin: 12px 0 10px; }
-.capture-slot-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.capture-slot { min-width: 0; padding: 9px 11px; border: 1px solid #d0d7de; border-radius: 8px; background: #fff; }
-.capture-slot-engine { display: block; margin-bottom: 4px; color: #596575; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
-.capture-slot-trigger { display: flex; width: 100%; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; border: 1px solid #d0d7de; border-radius: 6px; background: #f8fafc; color: #111827; font: inherit; text-align: left; cursor: pointer; }
-.capture-slot-trigger [data-slot-label] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.capture-slot[data-engine="dynamo"] { border-top: 3px solid #76b900; }
-.capture-slot[data-engine="sglang"] { border-top: 3px solid #d9661f; }
-.capture-slot[data-engine="vllm"] { border-top: 3px solid #2f6fe4; }
+/* Three comparison slots use the engine and version row shown above the original table. */
+.capture-slots { margin: 14px 0 12px; }
+.capture-slot-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.capture-slot { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 14px; border: 1px solid #d9dee5; border-left: 5px solid #d9dee5; border-radius: 15px; background: #fff; box-shadow: 0 1px 2px rgba(15, 23, 42, .06); }
+.capture-slot[data-engine="dynamo"] { border-left-color: #76b900; }
+.capture-slot[data-engine="sglang"] { border-left-color: #d9661f; }
+.capture-slot[data-engine="vllm"] { border-left-color: #2f6fe4; }
+.capture-slot-engine-trigger { display: inline-flex; min-width: 0; flex: 0 1 auto; align-items: center; gap: 12px; padding: 0; border: 0; background: transparent; color: #111827; font: inherit; cursor: pointer; }
+.capture-slot-engine-trigger:focus-visible,
+.capture-slot-select:focus-visible { outline: 3px solid #94bffb; outline-offset: 2px; }
+.capture-slot-badge { display: inline-grid; width: 44px; height: 44px; flex: 0 0 44px; place-items: center; border-radius: 11px; background: #596575; color: #fff; font-size: 22px; font-weight: 700; }
+.capture-slot[data-engine="dynamo"] .capture-slot-badge { background: #76b900; }
+.capture-slot[data-engine="sglang"] .capture-slot-badge { background: #d9661f; }
+.capture-slot[data-engine="vllm"] .capture-slot-badge { background: #2f6fe4; }
+.capture-slot-engine { overflow: hidden; color: #596575; font-size: 21px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.capture-slot[data-engine="dynamo"] .capture-slot-engine { color: #66a600; }
+.capture-slot[data-engine="sglang"] .capture-slot-engine { color: #c95c19; }
+.capture-slot[data-engine="vllm"] .capture-slot-engine { color: #2f6fe4; }
+.capture-slot-select { width: min(48%, 250px); min-width: 0; padding: 9px 13px; border: 1px solid #dce1e7; border-radius: 10px; background: #f3f5f7; color: #111827; font: inherit; font-size: 16px; }
 .tab-panel#tab-unified > .cmpctl { display: none; }
 .capture-slots-notice { margin: 0 0 8px; padding: 6px 9px; border: 1px solid #c9a34a; border-radius: 5px; color: #594716; font-size: 12px; }
-.capture-picker { position: fixed; inset: auto; width: min(360px, calc(100vw - 32px)); max-width: calc(100vw - 24px); margin: 0; padding: 14px 16px; border: 1px solid #aeb8c2; border-radius: 9px; background: #fff; color: #111827; box-shadow: 0 8px 28px rgba(0,0,0,.22); }
+.capture-picker { position: fixed; inset: auto; width: min(430px, calc(100vw - 32px)); max-width: calc(100vw - 24px); margin: 0; padding: 22px 24px; border: 1px solid #aeb8c2; border-radius: 12px; background: #fff; color: #111827; box-shadow: 0 8px 28px rgba(0,0,0,.22); }
 .capture-picker::backdrop { background: rgba(10,14,20,.25); }
-.capture-picker h2 { margin: 0 0 12px; font-size: 16px; }
-.capture-picker label { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 10px 0; font-size: 13px; }
-.capture-picker select { min-width: 0; max-width: 72%; padding: 5px 7px; border: 1px solid #c5ccd4; border-radius: 5px; background: #fff; color: #111827; }
-.capture-picker button { margin-top: 5px; padding: 5px 12px; }
+.capture-picker h2 { margin: 0 0 20px; font-size: 25px; }
+.capture-picker label { display: grid; grid-template-columns: 82px minmax(0, 1fr); align-items: center; gap: 12px; margin: 14px 0; font-size: 16px; }
+.capture-picker select { width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid #c5ccd4; border-radius: 5px; background: #fff; color: #111827; font: inherit; }
 :root[data-theme="dark"] .capture-slot { background: #171b21; border-color: #38414d; }
+:root[data-theme="dark"] .capture-slot-engine-trigger { color: #e8edf3; }
 :root[data-theme="dark"] .capture-slot-engine { color: #a5b0bd; }
-:root[data-theme="dark"] .capture-slot-trigger,
+:root[data-theme="dark"] .capture-slot-select,
 :root[data-theme="dark"] .capture-picker,
 :root[data-theme="dark"] .capture-picker select { background: #1b2128; border-color: #38414d; color: #e8edf3; }
 :root[data-theme="dark"] .capture-slots-notice { color: #e8d29a; border-color: #80692c; }
 @media (max-width: 700px) {
   .capture-slot-controls { grid-template-columns: 1fr; }
+  .capture-slot-engine { font-size: 18px; }
+  .capture-slot-select { width: 58%; }
 }

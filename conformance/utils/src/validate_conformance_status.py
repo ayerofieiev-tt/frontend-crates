@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 
 import yaml
-from impls import BATCH_DEFAULT_VERSIONS, UNIFIED_BATCH_IMPLS
+from impls import UNIFIED_BATCH_IMPLS, UNIFIED_COMPARISON_DEFAULTS
 
 from case_variants import leaf_cells
 import unified_taxonomy
@@ -361,7 +361,10 @@ def build_status(model: dict, tabs: list[dict], requested_models: list[str], htm
         "generated": model.get("meta", {}),
         "reports": reports,
         "captures": [capture for tab in tabs if tab["id"] == "tab-unified" for capture in capture_status(tab, select_rows(tab, requested_models))],
-        "comparison_defaults": {tab["id"]: [next((candidate["key"] for candidate in tab["candidates"] if candidate["key"] == f"{implementation}@{version}"), None) for implementation, version in BATCH_DEFAULT_VERSIONS.items()] for tab in tabs if tab["id"] == "tab-unified"},
+        "comparison_defaults": {tab["id"]: [
+            next((candidate["key"] for candidate in tab["candidates"] if candidate["key"] == key), None)
+            for key in tab.get("comparison_defaults", UNIFIED_COMPARISON_DEFAULTS)
+        ] for tab in tabs if tab["id"] == "tab-unified"},
     }
 
 

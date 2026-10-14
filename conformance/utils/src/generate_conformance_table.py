@@ -103,6 +103,8 @@ RUST_TOOL_CALLING_DIR = REPO_ROOT / "lib/parsers/src/tool_calling"
 from impls import (  # noqa: E402
     UNIFIED_BATCH_IMPLS,
     BATCH_DEFAULT_VERSIONS,
+    UNIFIED_COMPARISON_DEFAULTS,
+    UNIFIED_COMPARISON_SLOT_ENGINES,
     BATCH_SOURCE_BLOCKERS,
     BATCH_SOURCE_IMPL,
     IMPL_SPECS,
@@ -3044,6 +3046,8 @@ def _unified_tab_model(artifact_root: Path, hrefs: dict) -> dict | None:
                       "measured against the GOLDEN oracle"),
         "columns": columns, "column_groups": column_groups,
         "candidates": candidates, "rows": rows, "stats": stats, "glossary": unified_glossary,
+        "comparison_defaults": UNIFIED_COMPARISON_DEFAULTS,
+        "comparison_slot_engines": UNIFIED_COMPARISON_SLOT_ENGINES,
         "case_prefix": "UNIFIED.", "case_section_id": "unified",
         "case_docs_href": cases_href, "case_docs_label": "lib/parsers/UNIFIED_CASES.md",
         "captured_note": ("vLLM captures include every packaged 0.25.1 and 0.26.x "

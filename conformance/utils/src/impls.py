@@ -85,6 +85,8 @@ UNIFIED_BATCH_IMPLS = ("dynamo_v1", "vllm_python_batch", "sglang_python_batch")
 BATCH_SOURCE_IMPL = {"dynamo_v1": "dynamo_v1", "vllm_python_batch": "vllm_python", "sglang_python_batch": "sglang_python"}
 BATCH_SOURCE_BLOCKERS = {("dynamo_v1", "9.2.13"): "Producer source unavailable: no release tag or crate publication for Dynamo 9.2.13; crates.io returned 404."}
 BATCH_DEFAULT_VERSIONS = {"dynamo_v1": "10.0.1", "sglang_python_batch": "0.5.14", "vllm_python_batch": "0.26.0"}
+UNIFIED_COMPARISON_DEFAULTS = (f"dynamo_v1@{BATCH_DEFAULT_VERSIONS['dynamo_v1']}", None, None)
+UNIFIED_COMPARISON_SLOT_ENGINES = ("dynamo", "sglang", "vllm")
 
 VLLM_UNIFIED_PIPELINES = {'deepseek_v4': ('deepseek_v4', 'deepseek_v4'), 'deepseek_v41': ('deepseek_v4', 'deepseek_v4'), 'gemma4': ('gemma4', 'gemma4'), 'kimi_k3': ('kimi_k3', 'kimi_k3'), 'qwen3': ('qwen3', 'qwen3_coder'), 'glm47': ('glm47', 'glm47'), 'kimi_k2': ('kimi_k2', 'kimi_k2')}
 

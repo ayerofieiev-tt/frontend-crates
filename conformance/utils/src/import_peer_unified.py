@@ -15,7 +15,7 @@ import yaml_fast  # noqa: F401
 from capture_unified_job import build_job
 from capture_stimulus import capture_input, select_peer_observation
 from explode_unified_fixtures import _peer_cell
-from generate_conformance_table import _assemble_stream
+from peer_stream_assembly import assemble_stream
 import unified_history
 
 
@@ -48,7 +48,7 @@ def import_capture(store_root: Path, job_path: Path, capture_path: Path, provena
         if "error" in result and "chunks" in result and "partial_chunks" not in result:
             result = {**result, "partial_chunks": result["chunks"]}
         if implementation != "vllm_python" and "error" not in result and "unavailable" not in result:
-            result = {**result, "assembled": _assemble_stream(result["chunks"])}
+            result = {**result, "assembled": assemble_stream(result["chunks"])}
         records[case["scenario"]] = _peer_cell(result, len(case["chunks"]))
 
     def mutate(store):

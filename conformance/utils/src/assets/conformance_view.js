@@ -633,6 +633,10 @@
   // impl matches. Bucket A = reference (radio checked, own compare box locked-on);
   // bucket A or B = compare-with checked; C = off.
   function compareBarHtml(tab) {
+    if (tab.kind === 'unified') {
+      return '<div class="cmpctl engine-cards" role="group" aria-label="Captured engines">' + [['Dynamo', 'dynamo'], ['SGLang', 'sglang'], ['vLLM', 'vllm']].map(([name, engine]) =>
+        '<div class="engine-card" data-engine="' + engine + '"><div class="engine-card-head"><strong class="engine-name">' + name + '</strong><select data-engine="' + engine + '" aria-label="' + name + ' capture"><option value="">None</option>' + (tab.candidates || []).filter(c => c.impl === engine).map(c => '<option value="' + escapeAttr(c.key) + '">' + escapeHtml(c.label) + '</option>').join('') + '</select></div></div>').join('') + '</div>';
+    }
     var groups = [['Dynamo', 'dynamo'], ['vLLM', 'vllm'], ['SGLang', 'sglang']];
     var html = '<div class="cmpctl" role="group" aria-label="Pick one Reference parser'
       + ' (radio) and any number of Compare-with parsers (checkbox)">';
@@ -1188,7 +1192,7 @@
 
   function buildTabsBar(page) {
     var html = '<div class="tabs" role="tablist">';
-    (page.tabs || []).forEach(function (t) {
+    (page.tabs.length > 1 ? page.tabs : []).forEach(function (t) {
       html += '<button class="tab-button' + (t.active ? ' active' : '') + '"'
         + ' id="' + escapeAttr(t.id) + '-button" type="button" role="tab"'
         + ' aria-selected="' + (t.active ? 'true' : 'false') + '"'

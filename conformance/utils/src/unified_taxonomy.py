@@ -30,6 +30,7 @@ from schema_cases import ARGUMENT_SECTIONS, CONFORMANCE_CASES, SCHEMA_GROUPS, ar
 UNIFIED_TAX = {
     # Group 1 — Single call
     "tool_only": (1, "1"),
+    "v1_split_parallel_tool_calls": ("v1_split", "parallel_tool_calls"),
     # TODO: restore 1-2 in the follow-up to PR #232 (deferred-cases). Completed below; the family-scoped alias retains its historical ID.
     "kimi_k2_optional_prefix_name_overlap": ("kimi_k2", "1"),
     # Group 2 — Multiple calls (streamv1.2)
@@ -202,6 +203,7 @@ UNIFIED_GROUP_LABEL = {
     50: "Prefilled Response", 51: "Prefilled Response — malformed",
     "deepseek_v4": "Single Family Test: DeepSeek V4-specific tests",
     "gemma": "Single Family Test: Gemma 4 guided call-prefix boundaries",
+    "v1_split": "V1 parser cases",
     "glm5": "Single Family Test: GLM argument handling",
     "deepseek": "Single Family Test: DeepSeek V4.1 DSML invocation bodies",
     "deepseek_v41": "Single Family Test: DeepSeek V4.1-specific tests",
@@ -284,6 +286,7 @@ def legacy_case_label(scenario):
 
 
 GROUP_DESCRIPTION_PREFIXES = {
+    "v1_split": ("v1_split_",),
     "kimi": ("kimi_k3_",),
     "gemma": ("gemma4_",),
     "glm5": ("glm47_",),
